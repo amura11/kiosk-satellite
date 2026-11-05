@@ -1,9 +1,8 @@
 {
   "name": "Kiosk Satellite",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "build": { "dockerfile": "Dockerfile" },
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "lts" },
-    "ghcr.io/devcontainers/features/java:1": { "version": "17", "jdkDistro": "temurin" },
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
@@ -14,8 +13,7 @@
   // Set them in your shell profile / system env BEFORE launching VS Code.
   "remoteEnv": {
     "GH_TOKEN": "${localEnv:GH_TOKEN}",
-    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
-    "PATH": "/home/vscode/flutter/bin:${containerEnv:PATH}"
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}"
   },
 
   // Persists Claude Code config/login across container rebuilds.
@@ -24,8 +22,7 @@
     "source=claude-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
   ],
 
-  // Flutter has no devcontainer feature; pin the same version CI builds with (release.yml).
-  "postCreateCommand": "[ -d ~/flutter ] || git clone --depth 1 --branch 3.44.6 https://github.com/flutter/flutter.git ~/flutter; ~/flutter/bin/flutter precache --universal && cd app && ~/flutter/bin/flutter pub get && npm ci",
+  "postCreateCommand": "cd app && flutter pub get && npm ci",
 
   "customizations": {
     "vscode": {
