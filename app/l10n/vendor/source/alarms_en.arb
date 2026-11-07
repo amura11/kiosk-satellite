@@ -615,10 +615,10 @@
       ]
     }
   },
-  "alarmsPhraseHint": "{label}, {time} and {day} become the alarm's label, time and day.",
-  "@alarmsPhraseHint": {
+  "alarmsPhraseVariables": "Available variables: {variables}",
+  "@alarmsPhraseVariables": {
     "context": "Alarm details",
-    "description": "Hint under the phrase text box. The three placeholders are shown to the user literally, in braces, and must not be translated.",
+    "description": "Hint under the phrase text box. {variables} is a list of words in braces, like {label}, {time}, which the user types as they are.",
     "x-locations": {
       "device": [
         "Kiosk menu > Alarms > an alarm"
@@ -628,17 +628,9 @@
       ]
     },
     "placeholders": {
-      "label": {
+      "variables": {
         "type": "String",
-        "description": "The literal text {label}."
-      },
-      "time": {
-        "type": "String",
-        "description": "The literal text {time}."
-      },
-      "day": {
-        "type": "String",
-        "description": "The literal text {day}."
+        "description": "The variables, in braces and separated by commas."
       }
     }
   },
@@ -678,6 +670,58 @@
       ],
       "remoteAdmin": [
         "Alarms"
+      ]
+    }
+  },
+  "alarmsMusic": "Music",
+  "@alarmsMusic": {
+    "context": "Alarms",
+    "description": "Alarm detail row: music from the library to ring with instead of the tone. The tone rings if the music cannot play.",
+    "x-locations": {
+      "device": [
+        "Kiosk menu > Alarms > Alarm"
+      ],
+      "remoteAdmin": [
+        "Alarms > Set an alarm"
+      ]
+    }
+  },
+  "alarmsMusicNone": "None",
+  "@alarmsMusicNone": {
+    "context": "Alarms",
+    "description": "Value of the alarm Music row when no music is picked.",
+    "x-locations": {
+      "device": [
+        "Kiosk menu > Alarms > Alarm"
+      ],
+      "remoteAdmin": [
+        "Alarms > Set an alarm"
+      ]
+    }
+  },
+  "alarmsMusicRemove": "Remove music",
+  "@alarmsMusicRemove": {
+    "context": "Alarms",
+    "description": "Spoken label of the button that takes the music off an alarm.",
+    "x-locations": {
+      "device": [
+        "Kiosk menu > Alarms > Alarm"
+      ],
+      "remoteAdmin": [
+        "Alarms > Set an alarm"
+      ]
+    }
+  },
+  "alarmsMusicHint": "Rings instead of the tone. The tone rings if the music cannot play.",
+  "@alarmsMusicHint": {
+    "context": "Alarms",
+    "description": "Note under the alarm Music field in the remote admin.",
+    "x-locations": {
+      "device": [
+        "Kiosk menu > Alarms > Alarm"
+      ],
+      "remoteAdmin": [
+        "Alarms > Set an alarm"
       ]
     }
   }

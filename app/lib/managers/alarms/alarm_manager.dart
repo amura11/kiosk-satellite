@@ -9,13 +9,16 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/command_registry.dart';
 import '../../core/events.dart';
+import '../../core/locale_dates.dart';
 import '../../core/manager.dart';
 import '../home_assistant/ha_tts.dart';
+import '../music_library/music_pick.dart';
 import '../notifications/notification_sounds.dart';
 import '../screensaver/screensaver_manager.dart'
     show currentScreensaverScheduleEntry;
 import '../settings/definitions.dart' as defs;
 import '../settings/settings_manager.dart';
+import '../voice/ha_socket.dart';
 import 'alarm_model.dart';
 import 'alarm_requests.dart';
 
@@ -130,12 +133,14 @@ class AlarmManager extends Manager {
     this._settings, {
     DateTime Function()? clock,
     MethodChannel? channel,
+    this._userName,
   }) : _clock = clock ?? DateTime.now,
        _channel = channel ?? const MethodChannel('kiosk_satellite/alarms');
 
   final SettingsManager _settings;
   final DateTime Function() _clock;
   final MethodChannel _channel;
+  final Future<String> Function()? _userName;
 
   /// The mode a plugin holds the screensaver on, which wins over the
   /// schedule and the setting. Set by the app container.
@@ -387,9 +392,16 @@ class AlarmManager extends Manager {
     } else {
       list.add(stored);
     }
-    // A changed alarm starts afresh: a stale handled mark would swallow
-    // its next ring if the new time lands on the old one.
-    _handled.remove(stored.id);
+    // A changed alarm starts afresh from now: a time already behind it is
+    // not rung late, so switching an alarm on two minutes after its time
+    // waits for the next one. A stale mark from before would swallow the
+    // next ring if the new time lands on the old one, so it goes too.
+    final behind = lastRing(stored, now);
+    if (behind != null) {
+      _handled[stored.id] = behind.millisecondsSinceEpoch;
+    } else {
+      _handled.remove(stored.id);
+    }
     await _write(list);
     log.info(name, 'saved ${stored.time} (${stored.id})');
     return stored;
@@ -692,8 +704,89 @@ class AlarmManager extends Manager {
       await _brightness(1);
     }
     final alarm = alarms.value.firstWhere((a) => a.id == known.first);
-    final path = await _tonePath(alarm.tone);
     final gen = ++_ringGen;
+    if (alarm.musicWith(defaultMusic) case final music?) {
+      // The music can take a few seconds to start on its speaker; the
+      // screen and the stop word work meanwhile, and the tone rings if it
+      // does not start.
+      _previewing = false;
+      await _armStopWord(true);
+      _persist();
+      _publish();
+      unawaited(_ringMusic(alarm, music, at, gen));
+      return;
+    }
+    await _ringTone(alarm, at, gen);
+    _previewing = false;
+    await _armStopWord(true);
+    _persist();
+    _publish();
+  }
+
+  /// The Alarm music default, null for none.
+  MusicPick? get defaultMusic {
+    final raw = _settings.get(defs.alarmsMusic).trim();
+    if (raw.isEmpty) return null;
+    try {
+      return MusicPick.fromJson(jsonDecode(raw));
+    } on FormatException {
+      return null;
+    }
+  }
+
+  /// Whether the alarm's music plays, or is starting: a quiet stops it.
+  bool _music = false;
+
+  /// The ring whose music started last. A start that finishes after a
+  /// newer ring began its own leaves that one alone.
+  int _musicGen = -1;
+
+  /// Play the alarm's music on its speaker at the alarm volume, repeating
+  /// until stopped. The alarm's tone rings when it cannot play.
+  Future<void> _ringMusic(
+    Alarm alarm,
+    MusicPick music,
+    DateTime at,
+    int gen,
+  ) async {
+    _music = true;
+    _musicGen = gen;
+    final result = await commands.execute('musicPickStart', {
+      'pick': music.toJson(),
+      'owner': 'alarm',
+      'volume': (_settings.get(defs.alarmsVolume) * 100).round(),
+      'repeat': true,
+      // The music eases in the way the tone does.
+      'easeMs': easesIn(alarm) ? _easeMs : 0,
+    });
+    if (gen != _ringGen || _s.phase != AlarmPhase.ringing) {
+      // Stopped or snoozed while the music started. A newer ring that
+      // started its own music keeps it.
+      if (result.ok && _musicGen == gen) {
+        await commands.execute('musicPickStop', const {'owner': 'alarm'});
+      }
+      return;
+    }
+    if (result.ok) {
+      log.info(
+        name,
+        'ringing with music: ${music.item?.title ?? music.random?.name}',
+      );
+      return;
+    }
+    _music = false;
+    log.warn(
+      name,
+      'the alarm music did not play (${result.error}), ringing the tone',
+    );
+    await _ringTone(alarm, at, gen);
+  }
+
+  /// Ring [alarm]'s tone on this device, with its phrase between the
+  /// rings.
+  Future<void> _ringTone(Alarm alarm, DateTime at, int gen) async {
+    final path = await _tonePath(alarm.tone);
+    if (gen != _ringGen) return;
     var rang = false;
     try {
       rang =
@@ -711,13 +804,9 @@ class AlarmManager extends Manager {
     }
     if (!rang) log.warn(name, 'the alarm tone did not play ($path)');
     final speaker = [
-      for (final id in known) ...alarms.value.where((a) => a.id == id),
+      for (final id in _s.ids) ...alarms.value.where((a) => a.id == id),
     ].where((a) => a.speak).firstOrNull;
     if (rang && speaker != null) unawaited(_speakRing(speaker, at, gen));
-    _previewing = false;
-    await _armStopWord(true);
-    _persist();
-    _publish();
   }
 
   // ── Speech and ease in ────────────────────────────────────────────────
@@ -736,14 +825,83 @@ class AlarmManager extends Manager {
   int get _easeMs =>
       (_settings.get(defs.alarmsEaseInSeconds).toDouble() * 1000).round();
 
-  /// What [alarm] says ringing at [at]: its own phrase or the default, with
-  /// {label}, {time} and {day} in the device's language.
-  String phraseFor(Alarm alarm, DateTime at) => fillAlarmPhrase(
-    alarm.phrase.isEmpty ? _settings.get(defs.alarmsPhrase) : alarm.phrase,
-    label: alarm.label,
-    time: _safeFormat((l) => DateFormat.jm(l), at),
-    day: _safeFormat((l) => DateFormat.EEEE(l), at),
+  /// The phrase [alarm] fills in: its own or the default.
+  String _template(Alarm alarm) =>
+      alarm.phrase.isEmpty ? _settings.get(defs.alarmsPhrase) : alarm.phrase;
+
+  /// What [alarm] says ringing at [at], in the device's language. [userName]
+  /// fills {name}.
+  String phraseFor(Alarm alarm, DateTime at, {String userName = ''}) =>
+      fillAlarmPhrase(
+        _template(alarm),
+        label: alarm.label,
+        name: userName,
+        time: _spokenTime(at),
+        hour: _spokenHour(at),
+        minute: '${at.minute}',
+        date: _safeFormat((l) => DateFormat.yMMMMd(l), at),
+        day: _safeFormat((l) => DateFormat.EEEE(l), at),
+        dayOfMonth: '${at.day}',
+        month: _safeFormat((l) => DateFormat.MMMM(l), at),
+        year: '${at.year}',
+      );
+
+  /// [phraseFor] with the Home Assistant user's name, asked for only when
+  /// the phrase uses it.
+  Future<String> spokenPhrase(Alarm alarm, DateTime at) async => phraseFor(
+    alarm,
+    at,
+    userName: _template(alarm).contains('{name}') ? await _askUserName() : '',
   );
+
+  /// Who the kiosk's token belongs to, or blank when Home Assistant does
+  /// not say in time: the phrase then goes without the name.
+  Future<String> _askUserName() async {
+    try {
+      return await (_userName ?? _haUserName)().timeout(
+        const Duration(seconds: 5),
+      );
+    } catch (e) {
+      log.warn(name, 'no Home Assistant user name for the phrase: $e');
+      return '';
+    }
+  }
+
+  /// A socket for this one question, so a kiosk that never says {name}
+  /// holds no connection for it.
+  Future<String> _haUserName() async {
+    final socket = HaSocket(
+      baseUrl: () => _settings.get(defs.haUrl),
+      token: () => _settings.get(defs.haToken),
+    );
+    try {
+      final user = await socket.request({'type': 'auth/current_user'});
+      return user is Map ? '${user['name'] ?? ''}' : '';
+    } finally {
+      await socket.close();
+    }
+  }
+
+  bool get _use24h => _settings.get(defs.alarmsClock24h);
+
+  /// The time on the clock Settings > Alarms > 24-hour clock picks: 19:00,
+  /// or 7:00 PM.
+  String _spokenTime(DateTime at) {
+    String out;
+    try {
+      out = (_use24h ? DateFormat.Hm() : twelveHourFormat()).format(at);
+    } catch (_) {
+      out = DateFormat(_use24h ? 'HH:mm' : 'h:mm a', 'en_US').format(at);
+    }
+    return _plainSpaces(out);
+  }
+
+  /// The hour the way {time} reads it, so 7 at 19:00 on an AM/PM clock.
+  String _spokenHour(DateTime at) {
+    if (_use24h) return '${at.hour}';
+    final hour = at.hour % 12;
+    return '${hour == 0 ? 12 : hour}';
+  }
 
   /// Plain spaces: intl puts a narrow no-break one before AM, which a
   /// text to speech engine may read out or trip on.
@@ -754,15 +912,18 @@ class AlarmManager extends Manager {
     } catch (_) {
       out = make('en_US').format(t);
     }
-    return out.replaceAll(RegExp('[\u00a0\u202f]'), ' ');
+    return _plainSpaces(out);
   }
+
+  static String _plainSpaces(String s) =>
+      s.replaceAll(RegExp('[\u00a0\u202f]'), ' ');
 
   /// Has Home Assistant say the phrase and hands the audio to the ring,
   /// which plays it after every second pass of the tone. The tone rings
   /// from the first second either way: a slow or missing Home Assistant
   /// only costs the words.
   Future<void> _speakRing(Alarm alarm, DateTime at, int gen) async {
-    final text = phraseFor(alarm, at);
+    final text = await spokenPhrase(alarm, at);
     if (text.isEmpty) return;
     final engine = _settings.get(defs.alarmsTtsEngine).trim();
     // A language or voice only goes with an engine picked by name.
@@ -892,6 +1053,10 @@ class AlarmManager extends Manager {
     } on MissingPluginException {
       // Tests.
     } catch (_) {}
+    if (_music) {
+      _music = false;
+      await commands.execute('musicPickStop', const {'owner': 'alarm'});
+    }
     await _armStopWord(false);
     await _brightness(null);
     await _release();
@@ -1245,7 +1410,8 @@ class AlarmManager extends Manager {
                 'tone: "" (default) | "builtin" | a sounds folder file, '
                 'sunrise, ease?: true | false (absent follows '
                 'alarms.ease_in), speak, phrase: "" (alarms.phrase) | '
-                'text with {label}, {time} and {day}, on}',
+                'text with {label}, {time} and {day}, on, music?: the '
+                'music picker\'s pick, rung instead of the tone}',
           },
           handler: (p) async {
             final raw = p['alarm'];

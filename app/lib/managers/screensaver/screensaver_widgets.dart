@@ -29,8 +29,19 @@
 ///      feels_like), and the line
 ///      toggles location, forecast, high_low (today's high and low from
 ///      the daily forecast, issue #1262), humidity, wind, visibility. The
-///      temperature always shows; every line needs its toggle on AND the
-///      entity to actually carry the reading.
+///      temperature always shows, with the condition icon to its left;
+///      every line needs its toggle on AND the entity to actually carry
+///      the reading. colored_icons draws that icon in its own colors
+///      instead of the widget color (on by default).
+///    - forecast: the coming days of a weather entity's daily forecast,
+///      one row each with the day, the condition icon, the high and the
+///      low (issue #1277). Config keys: entity (a weather.* entity id),
+///      name (its friendly name, cached for the editors), color ("r,g,b"
+///      text and icon color), days (how many rows, one of
+///      [forecastDayOptions]) and today (whether the list starts with
+///      today; tomorrow otherwise, for a corner beside a Weather widget
+///      that already shows today) and colored_icons (the condition icons
+///      in their own colors instead of the widget color).
 ///    - battery: the device's own battery, as an icon with an optional
 ///      percentage. Config keys: color ("r,g,b" icon and text color),
 ///      percent (the number beside the icon), low (only show once the
@@ -48,6 +59,10 @@
 ///      beside the value, issue #912) and color ("r,g,b" icon and text
 ///      color). A blank value hides the whole widget, vignette
 ///      included (issue #691).
+/// - enabled: false keeps the entry in the list without drawing it. It
+///   gives up its corner on the screensaver, but still holds it in the
+///   list: one widget per corner counts the entries that are off too.
+///   Missing reads as true, and true is left out of the stored JSON.
 /// - config: the type's own settings; missing keys read as the type's
 ///   defaults, so entries survive new keys being added. Every type also
 ///   carries scale, this widget's own size correction in percent from
@@ -64,23 +79,25 @@ library;
 
 import 'dart:convert';
 
-import '../settings/definitions.dart'
-    show cornerOptions, fontFamilyOptions, fontWeightOptions;
+import '../settings/settings_manager.dart';
 
 class ScreensaverWidget {
   const ScreensaverWidget({
     required this.position,
     required this.type,
     required this.config,
+    this.enabled = true,
   });
 
   final String position;
   final String type;
   final Map<String, Object?> config;
+  final bool enabled;
 
   Map<String, Object?> toJson() => {
     'position': position,
     'type': type,
+    if (!enabled) 'enabled': false,
     'config': config,
   };
 }
@@ -89,6 +106,7 @@ class ScreensaverWidget {
 const screensaverWidgetTypes = [
   'clock',
   'weather',
+  'forecast',
   'battery',
   'entity',
   'alarm',
@@ -98,6 +116,7 @@ const screensaverWidgetTypes = [
 String describeScreensaverWidgetType(String type) => switch (type) {
   'clock' => 'Small clock',
   'weather' => 'Weather',
+  'forecast' => 'Weather forecast',
   'battery' => 'Battery',
   'entity' => 'Entity',
   'alarm' => 'Next alarm',
@@ -132,6 +151,18 @@ Map<String, Object?> screensaverWidgetDefaults(String type) => switch (type) {
     'humidity': true,
     'wind': true,
     'visibility': true,
+    'colored_icons': true,
+  },
+  'forecast' => {
+    'entity': '',
+    'name': '',
+    'color': '250,250,250',
+    'scale': screensaverWidgetScaleDefault,
+    'font': screensaverWidgetFontDefault,
+    'font_weight': screensaverWidgetFontDefault,
+    'days': 5,
+    'today': true,
+    'colored_icons': true,
   },
   'battery' => {
     'color': '250,250,250',
@@ -148,7 +179,10 @@ Map<String, Object?> screensaverWidgetDefaults(String type) => switch (type) {
     'font_weight': screensaverWidgetFontDefault,
   },
   // The family calendar's next events, up to [count], over [days] days
-  // starting today.
+  // starting today, each marked with its calendars' pictures, or with a
+  // dot in their colors when [dots] is on (issue #1285). [all_day] off
+  // lists only timed events (issue #1312). A widget saved before it reads
+  // as on.
   'calendar' => {
     'color': '250,250,250',
     'scale': screensaverWidgetScaleDefault,
@@ -156,6 +190,8 @@ Map<String, Object?> screensaverWidgetDefaults(String type) => switch (type) {
     'font_weight': screensaverWidgetFontDefault,
     'count': 3,
     'days': 1,
+    'all_day': true,
+    'dots': false,
   },
   'entity' => {
     'entity': '',
@@ -176,6 +212,9 @@ Map<String, Object?> screensaverWidgetDefaults(String type) => switch (type) {
 /// How many days the Up next widget looks ahead: today, today and tomorrow
 /// or the next 7 days.
 const upNextDayOptions = [1, 2, 7];
+
+/// How many days the Weather forecast widget lists.
+const forecastDayOptions = [3, 5, 7];
 
 /// A widget's own font family or weight left at Default: the widget
 /// follows the Global font family or Global font weight setting.
@@ -272,6 +311,7 @@ List<ScreensaverWidget> decodeScreensaverWidgets(String json) {
           config: config is Map
               ? config.map((k, v) => MapEntry('$k', v))
               : screensaverWidgetDefaults(type),
+          enabled: entry['enabled'] != false,
         ),
       );
     }
@@ -280,6 +320,20 @@ List<ScreensaverWidget> decodeScreensaverWidgets(String json) {
   }
   return out;
 }
+
+/// The widgets that draw on the screensaver: none with Enable screensaver
+/// widgets off, otherwise every entry left on. Anything that asks which
+/// corners are taken reads this list, so a widget that is off frees its
+/// corner.
+List<ScreensaverWidget> activeScreensaverWidgets(SettingsManager settings) =>
+    settings.get(screensaverWidgetsEnabled)
+    ? [
+        for (final w in decodeScreensaverWidgets(
+          settings.get(screensaverWidgets),
+        ))
+          if (w.enabled) w,
+      ]
+    : const [];
 
 /// Encode for storage, in corner order so the stored list (and every list
 /// rendered from it) reads top-left to bottom-right.

@@ -660,9 +660,14 @@ internal class ApiServer(
                 socket.keepAlive = true
                 socket.soTimeout = HANDSHAKE_TIMEOUT_MS
                 val t = if (psk != null) {
+                    // The hello carries the MAC as ESPHome firmware sends it,
+                    // 12 lowercase hex digits. aioesphomeapi cuts it to 16
+                    // characters, so the colon form loses its last digit and
+                    // HA never matches the entry to start reauth.
                     NoiseTransport(
                         socket.getInputStream(), socket.getOutputStream(),
-                        psk, identity.name, identity.macAddress)
+                        psk, identity.name,
+                        identity.macAddress.replace(":", "").lowercase())
                 } else {
                     PlaintextTransport(socket.getInputStream(), socket.getOutputStream())
                 }
@@ -927,7 +932,7 @@ internal class ApiServer(
                             // camera brings it back with the rest.
                             if (hub.cameras.isNotEmpty()) {
                                 requestCameraFrames(hub.cameras.map { it.key })
-                                hub.requestCameraImage()
+                                hub.announceCameras()
                             }
                         }
                     }

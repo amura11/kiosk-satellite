@@ -120,7 +120,7 @@ Displays a completely black screen while leaving the underlying application runn
 
 ### Clock
 
-Renders a full screen clock with four selectable styles via **Style**: **Digital Clock**, **Flip Clock** (split-flap cards), **Roller Clock** (rolling digits styled after the Lenovo Smart Clock 2) or **Hand Clock** (a dial with hands, ticks and numbers). Date formats adapt automatically to the device's system language.
+Renders a full screen clock with four selectable styles via **Style**: **Digital Clock**, **Flip Clock** (split-flap cards), **Roller Clock** (rolling digits styled after the Lenovo Smart Clock 2) or **Hand Clock** (a dial with hands, ticks and numbers). Dates use the app language set under **Device > User Interface > Language**.
 
 | Setting | Notes |
 | --- | --- |
@@ -164,19 +164,19 @@ Some light sensors stop reporting while the display is off. On those devices the
 
 ### Home Assistant Media
 
-Streams media served by Home Assistant's media browser, including single images, image folders, video files, or `camera.*` entities (which stream over WebRTC with an MJPEG fallback). **Media source** opens the picker. Selecting an image folder unlocks playlist controls (**Seconds per image**, **Shuffle**, **Include subfolders**, **Transition**, and **Tap edges to change slides**). Video assets play through to completion. Photos follow standard [Slideshow behavior](#slideshow-behavior) scaling rules, whereas videos and camera streams preserve their native aspect ratio.
+Streams media served by Home Assistant's media browser, including single images, image folders, video files, or `camera.*` entities (which stream over WebRTC with an MJPEG fallback). **Media source** opens the picker. Selecting an image folder unlocks playlist controls (**Seconds per image**, **Video length**, **Shuffle**, **Include subfolders**, **Transition** and **Tap edges to change slides**). Photos and videos follow the [Slideshow behavior](#slideshow-behavior) rules, while camera streams keep their native aspect ratio.
 
 **Show metadata** puts each photo's details in a corner, read from the photo's own EXIF. **Date taken** shows when it was taken and **Camera details** shows the camera model with the focal length, aperture and ISO. **Metadata position**, **Text drop shadow**, **Text scaling** and **Vignette strength** work as they do on Immich Media. Location is left out because turning GPS coordinates into a place name needs an online lookup service. The details come from JPEG photos. Videos and camera streams show none.
 
 ### Local Media
 
-Displays an image slideshow loaded from a local folder on the device. Configuration options include **Local folder** (selected on device or typed into the remote admin), **Seconds per photo**, **Shuffle**, **Include subfolders**, **Transition**, **Fill the screen**, and **Tap edges to change slides**.
+Displays an image slideshow loaded from a local folder on the device. Configuration options include **Local folder** (selected on device or typed into the remote admin), **Seconds per photo**, **Video length**, **Shuffle**, **Include subfolders**, **Transition**, **Fill the screen** and **Tap edges to change slides**.
 
 **Show metadata** puts each photo's details in a corner, read from the photo's own EXIF. **Date taken** shows when it was taken and **Camera details** shows the camera model with the focal length, aperture and ISO. **Metadata position**, **Text drop shadow**, **Text scaling** and **Vignette strength** work as they do on Immich Media. Location is left out because turning GPS coordinates into a place name needs an online lookup service. The details come from JPEG photos. Videos show none.
 
 ### Photo Gallery
 
-Operates similarly to Local Media, but selects files using the native system gallery picker. This avoids needing broad storage permissions. Selected images are stored locally to survive device reboots. Options include **Photos** selection, **Seconds per photo**, **Shuffle**, **Transition**, **Fill the screen**, and **Tap edges to change slides**.
+Operates similarly to Local Media, but selects files using the native system gallery picker. This avoids needing broad storage permissions. Selected images are stored locally to survive device reboots. Options include **Photos** selection, **Seconds per photo**, **Video length**, **Shuffle**, **Transition**, **Fill the screen** and **Tap edges to change slides**.
 
 ### Image URL
 
@@ -231,7 +231,7 @@ Photo slideshow modes (Home Assistant Media, Local Media, Photo Gallery, Image U
   | Smart | Crops up to roughly 25% along one axis to fill the display if the image aspect ratio is close to the panel's aspect ratio (covering standard 4:3 and 16:9 camera formats). Portrait and square photos retain their full frame over an enlarged, blurred, and dimmed copy of the image instead of black bars. |
   | Always | Scales the image to cover the display completely regardless of aspect ratio, cropping overflow. A 4:3 image on a 2:1 display loses approximately one-third of its vertical framing. |
 
-* **Videos** play muted to completion, overriding image interval timers. Unplayable video files are skipped automatically.
+* **Videos** play muted. **Video length** (Whole video by default) picks how long. Whole video plays each one to its end, and Same as photos stops it once the seconds per photo run out, or at its end if it is shorter. Videos follow **Fill the screen** too, but one that is not enlarged keeps black bars instead of the blurred backdrop. Unplayable video files are skipped automatically.
 * The slideshow playlist builds upon screensaver activation. Newly added files appear during the next screensaver launch rather than mid-session. Image URL has no playlist and fetches a new photo for every slide.
 * Images decode at the native panel resolution, and memory for previous slides is released immediately to prevent memory exhaustion on low-RAM devices.
 * **Tap edges to change slides** (on by default): A tap on the left or right fifth of the screen shows the previous or next slide and resets its full display interval. Taps on the middle three fifths dismiss the screensaver as usual. Each slideshow mode has its own switch on its settings page, and turning it off makes every tap dismiss again. Home Assistant Media offers it for image folders only, since a single image, video, or camera stream has nothing to step.
@@ -240,6 +240,8 @@ Photo slideshow modes (Home Assistant Media, Local Media, Photo Gallery, Image U
 ## Widgets
 
 Widgets are small status overlays anchored to display corners, configured within the **Widgets** section of screensaver settings. Each widget claims one of the four display corners (limited to one widget per corner) and includes individual customization options. Widgets overlay all compatible screensaver modes, but are suppressed in Black mode when **Hide all extras** is enabled. 
+
+**Enable screensaver widgets**, on by default, shows or hides all widgets at once and keeps the list as it is. Each widget in the list also has its own switch beside the delete button. A widget that is off stays in the list and keeps its corner there, but it does not show on the screensaver and the photo metadata overlay can use that corner. Widgets stay hidden while **Enable screensaver widgets** is off, even under a [schedule](#schedule) entry that sets **Widgets** to on. Home Assistant can flip the same switch with the [ESPHome](esphome.md) **Screensaver widgets** entity.
 
 Every widget has its own **Scale** slider (-50% to +50%) in its editor, which sizes that widget relative to the others. The **Global widget scaling** slider (50% to 200%) then scales all of them together for the display, keeping their relative sizes, and previews live while the screensaver is running. Widgets draw in Rubik unless the **Global font family** and **Global font weight** rows say otherwise, with the same choices as the Clock screensaver's Font Family and Font weight rows. Each widget's editor has its own **Font family** and **Font weight** pickers, Default following the global rows, so one widget can wear the clock's face while the rest stay in Rubik. When running over the Clock screensaver in Night mode, all active widgets inherit the clock's **Night color** to maintain low light levels. **Text drop shadow**, enabled by default, adds a defined shadow beneath widget text. Turn it off for text without a shadow. Changes preview live. Widgets render over a soft dark vignette to ensure text readability against bright background images. The **Vignette strength** slider (0% to 100%, 40% default) adjusts vignette opacity with live previewing. Setting this to 0% removes shading entirely for a clean frame look.
 
@@ -261,7 +263,7 @@ Renders over a soft vignette for legibility and supports pixel shift adjustments
 
 ### Weather
 
-Displays real-time weather data pulled from a Home Assistant `weather` entity over any mode except Calendar and Camera Streams. The widget layout displays top-to-bottom: location name, current temperature with units (e.g., "28°C"), condition text with a matching icon, humidity, wind speed, and visibility. Units are provided directly by the Home Assistant entity, and icons render in a monochrome style matching the widget color.
+Displays real-time weather data pulled from a Home Assistant `weather` entity over any mode except Calendar and Camera Streams. The widget layout displays top-to-bottom: location name, current temperature with units (e.g., "28°C") with an icon for the current conditions beside it, condition text with a matching icon, humidity, wind speed, and visibility. Units are provided directly by the Home Assistant entity, and the icons on the detail lines render in a monochrome style matching the widget color.
 
 | Setting | Default | Notes |
 | --- | --- | --- |
@@ -272,8 +274,26 @@ Displays real-time weather data pulled from a Home Assistant `weather` entity ov
 | Feels like | Off | Displays apparent temperature alongside actual temperature (e.g., "30°C / 33°C"). Requires entity support. If rounded values match, only a single temperature displays. |
 | Feels like only | Off | Replaces the actual temperature reading with the apparent temperature. Takes priority over Feels like, and falls back to actual temperature if apparent data is missing. |
 | Location, Forecast, Humidity, Wind speed, Visibility | On | Individual toggles for each data line. Lines automatically hide if the source entity lacks that specific data point. |
+| Colored icons | On | Shows the conditions icon next to the temperature in its own colors. Turn it off to draw it in the widget color. While the Clock screensaver's Night mode is on, the icon always takes the night color. |
+
+The conditions icon sits on the corner's outer edge like the detail line icons: left of the temperature in a left corner and right of it in a right corner. Once the sun sets, sunny and partly cloudy show the moon instead of the sun. The kiosk reads that from Home Assistant's `sun.sun` entity, or from the local time (6 PM to 6 AM) when that entity is missing.
 
 Data updates automatically via a live Home Assistant subscription while the screensaver is active. The last received values persist through brief network drops. Forecast condition text utilizes Home Assistant's localized translations (e.g., a server set to Italian displays "Nebbia" instead of "Fog"). Translations are fetched once upon app launch.
+
+### Weather forecast
+
+Lists the coming days of a Home Assistant `weather` entity's daily forecast over any mode except Calendar and Camera Streams. Each row shows the day, an icon for the expected conditions, the high and the low, such as **Mon**, a sun icon, **68°** and **49°**. The columns line up down the list.
+
+| Setting | Default | Notes |
+| --- | --- | --- |
+| Weather entity | None | Selected from Home Assistant. The widget remains hidden until an entity is assigned. |
+| Corner | First free corner | Displays in the first available corner. |
+| Color | White | Applies to the days and temperatures, and to the icons when **Colored icons** is off. |
+| Days shown | 5 | How many days it lists: 3, 5 or 7. If the integration forecasts fewer days, the widget lists the days it has. |
+| Include today | On | Starts the list with today. Turn it off to start with tomorrow, such as next to a **Weather** widget that already shows today. |
+| Colored icons | On | Shows the weather icons in their own colors. Turn it off to draw them in the widget color. While the Clock screensaver's Night mode is on, the icons always take the night color. |
+
+Once the sun sets, today's row shows the moon instead of the sun for sunny and partly cloudy, the same as the **Weather** widget. Later days keep their daytime icons. The forecast updates live while the screensaver runs. An entity whose integration has no daily forecast shows nothing, and the low column is left out when the integration only reports highs.
 
 ### Battery
 
@@ -290,7 +310,7 @@ Reads hardware battery state directly from Android rather than a Home Assistant 
 
 ### Next alarm
 
-Shows the next [alarm](alarms.md) set on the kiosk when it rings within 24 hours, and the snooze while one runs, over any mode except Calendar and Camera Streams. The corner stays empty the rest of the time. A tap on the widget opens the alarm list.
+Shows the next [alarm](alarms.md) set on the kiosk when it rings within 24 hours, and the snooze while one runs, over any mode except Calendar and Camera Streams. The corner stays empty the rest of the time. A tap on the widget opens the alarm list. Times follow **Settings > Alarms > 24-hour clock**.
 
 | Setting | Default | Notes |
 | --- | --- | --- |
@@ -299,13 +319,16 @@ Shows the next [alarm](alarms.md) set on the kiosk when it rings within 24 hours
 
 ### Up next
 
-Shows what is still to come today on the [calendar](calendar.md), over any mode except Calendar and Camera Streams: a dot in each event's calendar color, the start time and the title. Calendars hidden with their chips are left out. The corner stays empty once nothing else is on today. A tap on the widget opens the calendar on the Schedule view.
+Shows what is still to come on the [calendar](calendar.md), over any mode except Calendar and Camera Streams: the picture of the person linked to each event's calendar, the start time and the title. A calendar with no person linked shows its initial on its color, and a shared event shows everyone on it. Calendars hidden with their chips are left out. The corner stays empty once nothing else is on in the days shown. A tap on the widget opens the calendar on the Schedule view. Times follow **Settings > Calendar > 24-hour clock**.
 
 | Setting | Default | Notes |
 | --- | --- | --- |
 | Corner | First free corner | Displays in the first available corner. |
 | Color | White | Applies to the times and titles. |
 | Events shown | 3 | How many coming events it lists, 1 to 5. |
+| Days shown | Today | How far ahead it looks: Today, Today and tomorrow or Next 7 days. |
+| Show all-day events | On | Turn this off to list only events with a start time. |
+| Colored dots | Off | Marks each event with a small dot in its calendar's color instead of the pictures. Night mode always uses the dots. |
 
 ### Entity
 
@@ -430,7 +453,7 @@ Proximity Detection uses the device's physical proximity sensor instead of the c
 * **Only when screen is off**: Keeps the visible screensaver up when something approaches. Once the display turns off, a new approach dismisses the screensaver and wakes the dashboard. Requires Dismiss on proximity.
 * **Postpone screensaver on proximity**: Monitors the sensor between screensaver sessions, resetting the idle timeout clock while an object remains close. Requires Dismiss on proximity. Proximity sensing incurs virtually zero power overhead as it relies on hardware interrupt lines.
 
-Proximity sensing requires no camera permissions and functions in complete darkness. However, hardware availability is limited: most kiosk-class tablets (such as Galaxy Tab devices, Fire tablets, and Echo Show hardware) lack physical proximity sensors. On unsupported devices, this setting appears disabled. While modern smartphones include proximity sensors, many use virtual "palm proximity" software sensors designed for phone calls that only trigger on direct screen contact. The settings page displays the reported sensor hardware name: physical infrared or time-of-flight sensors (such as STK3310, VCNL4040, or TMD2755) support hover detection at a few centimeters, whereas virtual "palm" or "touch" sensors do not. Some wall panels, such as the Sonoff NSPanel Pro, report a raw reading that rises as something comes closer instead of a distance. Kiosk Satellite recognizes these and treats a clear rise over the resting reading as an approach, which on the NSPanel Pro reaches about 20 cm.
+Proximity sensing requires no camera permissions and functions in complete darkness. However, hardware availability is limited: most kiosk-class tablets (such as Galaxy Tab devices, Fire tablets, and Echo Show hardware) lack physical proximity sensors. On unsupported devices, this setting appears disabled. While modern smartphones include proximity sensors, many use virtual "palm proximity" software sensors designed for phone calls that only trigger on direct screen contact. The settings page displays the reported sensor hardware name: physical infrared or time-of-flight sensors (such as STK3310, VCNL4040, or TMD2755) support hover detection at a few centimeters, whereas virtual "palm" or "touch" sensors do not. Some devices, such as the Sonoff NSPanel Pro and the Lenovo Smart Clock, report a raw reading that rises as something comes closer instead of a distance. Kiosk Satellite recognizes these and treats a clear rise over the resting reading as an approach, which on the NSPanel Pro reaches about 20 cm.
 
 Objects resting on the sensor when monitoring begins do not trigger an approach event, preventing tablet cases or mounts from causing continuous wake loops. While an object remains near the sensor, presence checks repeat every few seconds to hold off screensaver activation when Postpone is enabled. Repeat checks do not trigger wake events; only initial approach events dismiss the screensaver. Under [Lockdown Mode](kiosk.md), proximity events will neither dismiss nor postpone screensavers.
 
@@ -475,7 +498,7 @@ Touch interactions instantly dismiss the screensaver and reset the idle clock. T
 
 While a screensaver obscures the web page, the **Pause dashboard during screensaver** optimization (enabled by default) completely halts web view rendering. This produces the majority of screensaver power and thermal savings (see benchmark details in [Optimizations](optimizations.md)). Dim and Home Assistant Dashboard are the exceptions, as the dashboard remains visible.
 
-Automated dashboard view rotation pauses while a screensaver is active, resuming from its current position when dismissed. Conversely, the **Return to home dashboard view** timer continues running quietly behind screensavers, ensuring the kiosk resets to the primary home dashboard view overnight without illuminating the display. Under the Home Assistant Dashboard screensaver that return happens when the screensaver ends. Now Playing can land somewhere else with its [After dismissing](sendspin.md#full-screen-now-playing) setting.
+Automated dashboard view rotation pauses while a screensaver is active, resuming from its current position when dismissed. Conversely, the **Return to home dashboard view** timer continues running quietly behind screensavers, ensuring the kiosk resets to the primary home dashboard view overnight without illuminating the display. If the start URL has a hash, such as a Bubble Card popup address, the return lands on that view with the popup open. Under the Home Assistant Dashboard screensaver that return happens when the screensaver ends. Now Playing can land somewhere else with its [After dismissing](sendspin.md#full-screen-now-playing) setting.
 
 When using the Voice Satellite integration on the dashboard, the **Turn off the Voice Satellite screensaver** setting (enabled by default in Voice Satellite settings) automatically disables the web integration's internal screensaver to prevent software conflicts.
 

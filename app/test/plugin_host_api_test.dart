@@ -1180,6 +1180,7 @@ void main() {
     late SettingsManager settings;
     late ValueNotifier<String?> view;
     late ValueNotifier<bool> night;
+    late bool shared;
     late bool nowPlaying;
 
     setUp(() async {
@@ -1190,6 +1191,7 @@ void main() {
       view = ValueNotifier(null);
       night = ValueNotifier(false);
       nowPlaying = false;
+      shared = false;
       api = PluginHostApi(
         commands,
         bus,
@@ -1198,6 +1200,7 @@ void main() {
           view: view,
           night: night,
           nowPlaying: () => nowPlaying,
+          nowPlayingShared: () => shared,
           settings: settings,
         ),
       );
@@ -1213,6 +1216,8 @@ void main() {
     const day = {
       'view': 'clock',
       'night': false,
+      'nowPlaying': false,
+      'nowPlayingShared': false,
       'textColor': null,
       'backgroundColor': null,
       'cardColor': null,
@@ -1242,6 +1247,8 @@ void main() {
       expect((await read('getScreensaverAppearance'))['data'], {
         'view': 'clock',
         'night': true,
+        'nowPlaying': false,
+        'nowPlayingShared': false,
         'textColor': 0xFF0A141E,
         'backgroundColor': 0xFF000000,
         'cardColor': null,
@@ -1260,6 +1267,13 @@ void main() {
         ((await read('getScreensaverAppearance'))['data'] as Map)['night'],
         false,
       );
+
+      // Beside a shared player the face stays in sight, Night mode and all.
+      shared = true;
+      final beside = (await read('getScreensaverAppearance'))['data'] as Map;
+      expect(beside['nowPlayingShared'], true);
+      expect(beside['night'], true);
+      expect(beside['textColor'], 0xFF0A141E);
     });
 
     test('tells subscribers when the look changes, once', () async {
@@ -1294,6 +1308,7 @@ void main() {
       await settle();
       expect(sent.single['payload'], {
         ...day,
+        'nowPlaying': true,
         'time': (sent.single['payload'] as Map)['time'],
       });
       sent.clear();
@@ -1302,6 +1317,87 @@ void main() {
       view.value = null;
       await settle();
       expect(sent.single['payload'], containsPair('view', null));
+    });
+  });
+
+  group('screensaver tint', () {
+    late List<String> tints;
+    late bool showing;
+
+    setUp(() async {
+      await api.dispose();
+      tints = [];
+      showing = true;
+      final settings = SettingsManager(bus, commands, log);
+      api = PluginHostApi(
+        commands,
+        bus,
+        (event) async => sent.add(event),
+        screensaver: PluginScreensaverFeed(
+          view: ValueNotifier(null),
+          night: ValueNotifier(false),
+          nowPlaying: () => false,
+          nowPlayingShared: () => false,
+          settings: settings,
+          setTint: (id, color) {
+            if (!showing) return false;
+            tints.add('$id ${color.toRadixString(16)}');
+            return true;
+          },
+          clearTint: (id) => tints.add('$id clear'),
+        ),
+      );
+    });
+
+    Future<Map<String, Object?>> tint(Map<String, Object?> params) =>
+        read('setScreensaverTint', params: params);
+
+    test('needs the screensaver capability', () async {
+      api.open({
+        ...session,
+        'capabilities': ['host.read'],
+      });
+      final catalog = (await read('getHostApi'))['data'] as Map;
+      expect(catalog['commands'], isNot(contains('setScreensaverTint')));
+      expect((await tint({'color': '#822222'}))['ok'], false);
+      expect(tints, isEmpty);
+    });
+
+    test('tints the plugin\'s own screensaver and clears with it', () async {
+      // A renderer needs no host capability for it, and gets nothing else.
+      api.open({
+        ...session,
+        'capabilities': ['screensaver'],
+      });
+      final catalog = (await read('getHostApi'))['data'] as Map;
+      expect(catalog['commands'], [
+        'getHostApi',
+        'setScreensaverTint',
+        'clearScreensaverTint',
+      ]);
+      expect(catalog['events'], isEmpty);
+      expect((await read('getScreensaverAppearance'))['ok'], false);
+      for (final bad in ['822222', '#82222', '#82222g', '#FF822222', '']) {
+        expect((await tint({'color': bad}))['ok'], false, reason: bad);
+      }
+      expect((await tint({'color': '#822222', 'extra': true}))['ok'], false);
+      expect(tints, isEmpty);
+
+      expect((await tint({'color': '#8a2Be2'}))['ok'], true);
+      expect(tints, ['example ff8a2be2']);
+
+      showing = false;
+      final refused = await tint({'color': '#822222'});
+      expect(refused['ok'], false);
+      expect(refused['error'], contains('on screen'));
+
+      expect((await read('clearScreensaverTint'))['ok'], true);
+      expect(tints.last, 'example clear');
+
+      // A session that ends takes its tint with it.
+      tints.clear();
+      api.close(session);
+      expect(tints, ['example clear']);
     });
   });
 

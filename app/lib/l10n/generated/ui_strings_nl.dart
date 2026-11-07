@@ -263,8 +263,8 @@ class UiStringsNl extends UiStrings {
   String get alarmsPhrase => 'Tekst';
 
   @override
-  String alarmsPhraseHint(String label, String time, String day) {
-    return '$label, $time en $day staan voor het label, de tijd en de dag van het alarm.';
+  String alarmsPhraseVariables(String variables) {
+    return 'Beschikbare variabelen: $variables';
   }
 
   @override
@@ -276,6 +276,19 @@ class UiStringsNl extends UiStrings {
   @override
   String get alarmsVoiceHint =>
       'Vereist de alarmblauwdruk van Kiosk Satellite en een LLM-gespreksagent in Home Assistant.';
+
+  @override
+  String get alarmsMusic => 'Muziek';
+
+  @override
+  String get alarmsMusicNone => 'Geen';
+
+  @override
+  String get alarmsMusicRemove => 'Muziek verwijderen';
+
+  @override
+  String get alarmsMusicHint =>
+      'Speelt in plaats van de toon. Als de muziek niet kan spelen, klinkt de toon.';
 
   @override
   String get androidAccessibilityHelp =>
@@ -527,6 +540,16 @@ class UiStringsNl extends UiStrings {
   String get calendarWidgetWeek => 'Komende 7 dagen';
 
   @override
+  String get calendarWidgetAllDay => 'Afspraken voor de hele dag tonen';
+
+  @override
+  String get calendarWidgetDots => 'Gekleurde stippen';
+
+  @override
+  String get calendarWidgetDotsHint =>
+      'Markeer afspraken met de kleur van hun agenda in plaats van de foto van de persoon.';
+
+  @override
   String get calendarVoiceSection => 'Agenda via spraak';
 
   @override
@@ -535,6 +558,137 @@ class UiStringsNl extends UiStrings {
   @override
   String get calendarVoiceHint =>
       'Vereist de agendablauwdruk van Kiosk Satellite en een LLM-gespreksagent in Home Assistant.';
+
+  @override
+  String get calendarNewEvent => 'Nieuwe afspraak';
+
+  @override
+  String get calendarEditEvent => 'Afspraak bewerken';
+
+  @override
+  String get calendarFieldTitle => 'Titel';
+
+  @override
+  String get calendarFieldTitleHint => 'Titel toevoegen';
+
+  @override
+  String get calendarFieldCalendars => 'Agenda\'s';
+
+  @override
+  String get calendarFieldSharedHint =>
+      'Wordt één keer getoond, verdeeld over hun kleuren.';
+
+  @override
+  String get calendarFieldStarts => 'Begint';
+
+  @override
+  String get calendarFieldEnds => 'Eindigt';
+
+  @override
+  String get calendarFieldStartTime => 'Begintijd';
+
+  @override
+  String get calendarFieldEndTime => 'Eindtijd';
+
+  @override
+  String get calendarFieldEndsBeforeStart => 'Eindigt voordat het begint.';
+
+  @override
+  String get calendarFieldRepeat => 'Herhalen';
+
+  @override
+  String get calendarRepeatNever => 'Herhaalt niet';
+
+  @override
+  String get calendarRepeatWeekdays => 'Elke werkdag';
+
+  @override
+  String calendarRepeatWeeklyOn(String weekday) {
+    return 'Elke week op $weekday';
+  }
+
+  @override
+  String calendarRepeatMonthlyOn(String day) {
+    return 'Elke maand op dag $day';
+  }
+
+  @override
+  String calendarRepeatYearlyOn(String date) {
+    return 'Elk jaar op $date';
+  }
+
+  @override
+  String get calendarFieldLocation => 'Locatie';
+
+  @override
+  String get calendarFieldLocationHint => 'Plaats toevoegen';
+
+  @override
+  String get calendarFieldNotes => 'Notities';
+
+  @override
+  String get calendarFieldNotesHint => 'Notities toevoegen';
+
+  @override
+  String get calendarEventAdded => 'Afspraak toegevoegd';
+
+  @override
+  String get calendarEventSaved => 'Wijzigingen opgeslagen';
+
+  @override
+  String get calendarEventDeleted => 'Afspraak verwijderd';
+
+  @override
+  String get calendarSaveFailed => 'Kan de afspraak niet opslaan';
+
+  @override
+  String get calendarDeleteFailed => 'Kan de afspraak niet verwijderen';
+
+  @override
+  String calendarEditReadOnly(String calendar) {
+    return '$calendar is alleen-lezen.';
+  }
+
+  @override
+  String calendarEditGone(String calendar) {
+    return 'De afspraak staat niet meer in $calendar.';
+  }
+
+  @override
+  String calendarEditNotAllowed(String calendar) {
+    return 'De Home Assistant-gebruiker van de kiosk mag $calendar niet wijzigen.';
+  }
+
+  @override
+  String calendarDeleteTitle(String title) {
+    return '$title verwijderen?';
+  }
+
+  @override
+  String calendarDeleteShared(String names) {
+    return 'Hij verdwijnt uit elke agenda waarin hij staat: $names.';
+  }
+
+  @override
+  String calendarSaveRepeatTitle(String title) {
+    return 'Wijzigingen in $title opslaan?';
+  }
+
+  @override
+  String get calendarSaveRepeatFollowing =>
+      'De nieuwe herhaling begint op deze dag.';
+
+  @override
+  String get calendarScopeThis => 'Deze afspraak';
+
+  @override
+  String get calendarScopeFollowing => 'Deze en volgende afspraken';
+
+  @override
+  String get calendarScopeAll => 'Alle afspraken';
+
+  @override
+  String get calendarEditingSection => 'Bewerken';
 
   @override
   String get cameraViewerTitle => 'Cameraweergave';
@@ -2577,6 +2731,11 @@ class UiStringsNl extends UiStrings {
   String get intercomCalling => 'Bellen…';
 
   @override
+  String intercomAnswersWithCameraIn(String seconds) {
+    return 'Camera aan over $seconds s';
+  }
+
+  @override
   String intercomAnswersIn(String seconds) {
     return 'Neemt op over $seconds s';
   }
@@ -2683,6 +2842,37 @@ class UiStringsNl extends UiStrings {
 
   @override
   String get intercomEndCall => 'Gesprek beëindigen';
+
+  @override
+  String get intercomVoiceCall => 'Spraakoproep';
+
+  @override
+  String get intercomVideoCall => 'Video-oproep';
+
+  @override
+  String get intercomVoiceOnly => 'Alleen spraak';
+
+  @override
+  String get intercomVideoAnswer => 'Video';
+
+  @override
+  String get intercomSwitchCamera => 'Camera wisselen';
+
+  @override
+  String get intercomCameraButton => 'Camera';
+
+  @override
+  String get intercomCameraOff => 'Camera uit';
+
+  @override
+  String get intercomYourCameraOff => 'Je camera staat uit';
+
+  @override
+  String get intercomVideoReconnecting => 'Video maakt opnieuw verbinding…';
+
+  @override
+  String get intercomCameraOffNotice =>
+      'De camera staat uit. Deze kiosk kan video tonen, maar niet verzenden.';
 
   @override
   String get intercomCallFailed => 'Kon niet bellen';
@@ -3258,6 +3448,107 @@ class UiStringsNl extends UiStrings {
   @override
   String get libraryVoiceHint =>
       'Vereist de muziekblauwdruk van Kiosk Satellite en een LLM-gespreksagent in Home Assistant.';
+
+  @override
+  String get musicPickerTitle => 'Muziek kiezen';
+
+  @override
+  String get musicPickerSearchHint => 'Muziek zoeken';
+
+  @override
+  String get musicPickerMusicFrom => 'Muziek van';
+
+  @override
+  String get musicPickerPlaysOn => 'Speelt af op';
+
+  @override
+  String musicPickerSourceLabel(String name) {
+    return 'Bron: $name';
+  }
+
+  @override
+  String musicPickerSpeakerLabel(String name) {
+    return 'Speelt af op: $name';
+  }
+
+  @override
+  String get musicPickerRandom => 'Willekeurig';
+
+  @override
+  String get musicPickerRandomHint => 'Elke keer een nieuwe keuze';
+
+  @override
+  String get musicPickerAnyTrack => 'Elk nummer';
+
+  @override
+  String get musicPickerAnyFavorite => 'Elke favoriet';
+
+  @override
+  String get musicPickerAnyPlaylist => 'Elke afspeellijst';
+
+  @override
+  String get musicPickerAnyAlbum => 'Elk album';
+
+  @override
+  String get musicPickerAnyStation => 'Elk radiostation';
+
+  @override
+  String get musicPickerRandomEach => 'Elke keer een andere';
+
+  @override
+  String get musicPickerWholeAlbum => 'Heel album';
+
+  @override
+  String get musicPickerWholePlaylist => 'Hele afspeellijst';
+
+  @override
+  String musicPickerWholeArtist(String name) {
+    return 'Alles van $name';
+  }
+
+  @override
+  String get musicPickerWholeFolder => 'Hele map';
+
+  @override
+  String get musicPickerAllTracks => 'Alle nummers';
+
+  @override
+  String get musicPickerShuffle => 'Willekeurige volgorde';
+
+  @override
+  String get musicPickerPreview => 'Voorbeluisteren';
+
+  @override
+  String get musicPickerStopPreview => 'Voorbeluisteren stoppen';
+
+  @override
+  String get musicPickerPreviewFailed => 'De muziek kon niet worden afgespeeld';
+
+  @override
+  String get musicPickerNothing => 'Niets gekozen';
+
+  @override
+  String get musicPickerNothingHint =>
+      'Kies een nummer, album, afspeellijst, artiest of station';
+
+  @override
+  String get musicPickerFollowsNote =>
+      'Speelt nu schakelt naar deze speaker zolang de muziek speelt.';
+
+  @override
+  String get musicPickerSonosNote =>
+      'Sonos-muziek speelt alleen op Sonos-speakers.';
+
+  @override
+  String get musicPickerNoSpeakers => 'Geen speakers om op af te spelen';
+
+  @override
+  String musicPickerOpen(String title) {
+    return '$title openen';
+  }
+
+  @override
+  String get musicPickerKindFolder => 'Map';
 
   @override
   String get offlineDashboard => 'Dashboard is niet beschikbaar';
@@ -4429,6 +4720,16 @@ class UiStringsNl extends UiStrings {
   String get overviewSystemUpdate => 'Systeemupdate beschikbaar';
 
   @override
+  String overviewPluginUpdate(String name) {
+    return 'Update voor $name beschikbaar';
+  }
+
+  @override
+  String overviewPluginUpdateHelp(String version) {
+    return 'Versie $version staat klaar om te controleren en te installeren.';
+  }
+
+  @override
   String overviewSystemImageUpdateHelp(String version) {
     return 'Versie $version van de systeemimage staat klaar om te installeren. Het apparaat start daarvoor twee keer opnieuw op.';
   }
@@ -4824,6 +5125,13 @@ class UiStringsNl extends UiStrings {
   String get settingAlarmsToneDescription => 'Speelt af bij het alarmvolume.';
 
   @override
+  String get settingAlarmsMusicTitle => 'Alarmmuziek';
+
+  @override
+  String get settingAlarmsMusicDescription =>
+      'Speelt in plaats van de toon. Als de muziek niet kan spelen, klinkt de toon.';
+
+  @override
   String get settingAlarmsSnoozeMinutesTitle => 'Sluimerduur';
 
   @override
@@ -4984,8 +5292,8 @@ class UiStringsNl extends UiStrings {
   String get settingCalendarWeekStartTitle => 'Week begint op';
 
   @override
-  String get settingCalendarWeekStartDescription =>
-      'Volgt de taal van het apparaat, tenzij ingesteld.';
+  String get settingCalendarWeekStartAppLanguageDescription =>
+      'Volgt de taal van de app, tenzij ingesteld.';
 
   @override
   String get settingCalendarWeatherEntityTitle => 'Weer';
@@ -4993,6 +5301,22 @@ class UiStringsNl extends UiStrings {
   @override
   String get settingCalendarWeatherEntityDescription =>
       'Voegt de weersverwachting aan elke dag toe.';
+
+  @override
+  String get settingCalendarAllowEditTitle =>
+      'Afspraken toevoegen en bewerken toestaan';
+
+  @override
+  String get settingCalendarAllowEditDescription =>
+      'Voegt Nieuwe afspraak en Bewerken toe aan de agenda.';
+
+  @override
+  String get settingCalendarAllowDeleteTitle =>
+      'Afspraken verwijderen toestaan';
+
+  @override
+  String get settingCalendarAllowDeleteDescription =>
+      'Voegt Verwijderen toe aan elke afspraak.';
 
   @override
   String get settingCalendarIdleCloseMinutesTitle => 'Sluiten bij inactiviteit';
@@ -7392,6 +7716,42 @@ class UiStringsNl extends UiStrings {
   String get updateAnotherPackage => 'een ander pakket';
 
   @override
+  String get deviceKioskSatelliteUpdates => 'Kiosk Satellite-updates';
+
+  @override
+  String get deviceAndroidSystemUpdates => 'Android-systeemupdates';
+
+  @override
+  String get settingAndroidUpdatePolicyTitle => 'Android-updates installeren';
+
+  @override
+  String get settingAndroidUpdatePolicyDescription =>
+      'Updates van Android zelf van de fabrikant van het apparaat, zoals Google of Samsung. De kioskmodus verbergt de melding om te herstarten en ze te installeren.';
+
+  @override
+  String get deviceAndroidUpdateAsk => 'Vragen op het apparaat';
+
+  @override
+  String get deviceAndroidUpdateAutomatic => 'Meteen';
+
+  @override
+  String get deviceAndroidUpdateWindowed => 'Binnen een tijdvenster';
+
+  @override
+  String get settingAndroidUpdateWindowStartTitle => 'Installeren vanaf';
+
+  @override
+  String get settingAndroidUpdateWindowStartDescription =>
+      'Lokale tijd waarop het dagelijkse venster voor installeren en herstarten begint.';
+
+  @override
+  String get settingAndroidUpdateWindowEndTitle => 'Installeren tot';
+
+  @override
+  String get settingAndroidUpdateWindowEndDescription =>
+      'Lokale tijd waarop het venster sluit. Een venster over middernacht eindigt de volgende dag.';
+
+  @override
   String get settingUiLanguageTitle => 'Taal';
 
   @override
@@ -8945,6 +9305,39 @@ class UiStringsNl extends UiStrings {
   String get intercomTalkSection => 'Praten';
 
   @override
+  String get settingIntercomVideoTitle => 'Video-oproepen';
+
+  @override
+  String get settingIntercomVideoDescription =>
+      'Verzendt en toont video tijdens gesprekken.';
+
+  @override
+  String get settingIntercomVideoQualityTitle => 'Videokwaliteit';
+
+  @override
+  String get settingIntercomVideoQualityDescription =>
+      'Hogere kwaliteit gebruikt meer CPU.';
+
+  @override
+  String get intercomOptionVideoLow => 'Laag';
+
+  @override
+  String get intercomOptionVideoMedium => 'Gemiddeld';
+
+  @override
+  String get intercomOptionVideoHigh => 'Hoog';
+
+  @override
+  String get intercomVideoSection => 'Video';
+
+  @override
+  String get settingIntercomAutoAnswerCameraTitle => 'Opnemen met camera aan';
+
+  @override
+  String get settingIntercomAutoAnswerCameraDescription =>
+      'Automatisch opgenomen video-oproepen starten met de camera aan.';
+
+  @override
   String get settingKioskAllowDrawerTitle => 'Menu toestaan met snelle acties';
 
   @override
@@ -10491,6 +10884,14 @@ class UiStringsNl extends UiStrings {
       'Filtert de eigen geluiden van de kiosk uit het microfoonsignaal, zodat de wekwoorddetectie en assistent ze niet horen. Laat dit ingeschakeld, tenzij een microfoon met eigen echo-onderdrukking hierdoor slechter klinkt.';
 
   @override
+  String get settingMicEchoCancellationMethodTitle =>
+      'Methode voor echo-onderdrukking';
+
+  @override
+  String get settingMicEchoCancellationMethodDescription =>
+      'Automatisch test GTCRN terwijl de kiosk geluid afspeelt en schakelt over naar AEC3 als er te veel echo overblijft. Kies Automatisch om opnieuw te testen.';
+
+  @override
   String get settingMicNoiseSuppressionTitle => 'Geluidsonderdrukking';
 
   @override
@@ -10541,6 +10942,12 @@ class UiStringsNl extends UiStrings {
 
   @override
   String get screenAudioCaptureVoiceCommunication => 'Spraakcommunicatie';
+
+  @override
+  String get screenAudioEchoMethodGtcrnDetected => 'GTCRN (gedetecteerd)';
+
+  @override
+  String get screenAudioEchoMethodAec3Detected => 'AEC3 (gedetecteerd)';
 
   @override
   String get screenAudioDownmix => 'Downmix (standaard)';
@@ -12093,6 +12500,13 @@ class UiStringsNl extends UiStrings {
       'Laat zien waar de foto is genomen.';
 
   @override
+  String get settingScreensaverImmichMetadataDescriptionTitle => 'Beschrijving';
+
+  @override
+  String get settingScreensaverImmichMetadataDescriptionDescription =>
+      'Laat de beschrijving van de foto onderaan het scherm zien.';
+
+  @override
   String get settingScreensaverImmichMetadataPositionTitle =>
       'Positie van metagegevens';
 
@@ -12138,10 +12552,6 @@ class UiStringsNl extends UiStrings {
 
   @override
   String get settingScreensaverImmichIntervalTitle => 'Seconden per afbeelding';
-
-  @override
-  String get settingScreensaverImmichIntervalDescription =>
-      'Hoelang elke afbeelding wordt getoond voordat de volgende verschijnt. Video\'s worden volledig afgespeeld.';
 
   @override
   String get settingScreensaverImmichShuffleTitle => 'Willekeurige volgorde';
@@ -12347,6 +12757,27 @@ class UiStringsNl extends UiStrings {
   String get screensaverMediaFillAlways => 'Altijd vullen';
 
   @override
+  String get settingScreensaverVideoLengthTitle => 'Videoduur';
+
+  @override
+  String get settingScreensaverVideoLengthDescription =>
+      'Hoelang elke video speelt voordat de volgende verschijnt.';
+
+  @override
+  String get screensaverMediaVideoLengthFull => 'Hele video';
+
+  @override
+  String get screensaverMediaVideoLengthInterval => 'Zoals foto\'s';
+
+  @override
+  String get settingScreensaverImageIntervalDescription =>
+      'Hoelang elke afbeelding wordt getoond voordat de volgende verschijnt.';
+
+  @override
+  String get settingScreensaverPhotoIntervalDescription =>
+      'Hoelang elke foto wordt getoond voordat de volgende verschijnt.';
+
+  @override
   String get settingScreensaverGalleryItemsTitle => 'Foto\'s';
 
   @override
@@ -12355,10 +12786,6 @@ class UiStringsNl extends UiStrings {
 
   @override
   String get settingScreensaverGalleryIntervalTitle => 'Seconden per foto';
-
-  @override
-  String get settingScreensaverGalleryIntervalDescription =>
-      'Hoelang elke foto wordt getoond voordat de volgende verschijnt. Video\'s worden volledig afgespeeld.';
 
   @override
   String get settingScreensaverGalleryShuffleTitle => 'Willekeurige volgorde';
@@ -12432,10 +12859,6 @@ class UiStringsNl extends UiStrings {
 
   @override
   String get settingScreensaverMediaIntervalTitle => 'Seconden per afbeelding';
-
-  @override
-  String get settingScreensaverMediaIntervalDescription =>
-      'Hoelang elke afbeelding wordt getoond voordat de volgende verschijnt. Video\'s worden volledig afgespeeld.';
 
   @override
   String get settingScreensaverMediaShuffleTitle => 'Willekeurige volgorde';
@@ -12579,10 +13002,6 @@ class UiStringsNl extends UiStrings {
 
   @override
   String get settingScreensaverLocalIntervalTitle => 'Seconden per foto';
-
-  @override
-  String get settingScreensaverLocalIntervalDescription =>
-      'Hoelang elke foto wordt getoond voordat de volgende verschijnt. Video\'s worden volledig afgespeeld.';
 
   @override
   String get settingScreensaverLocalShuffleTitle => 'Willekeurige volgorde';
@@ -13417,6 +13836,26 @@ class UiStringsNl extends UiStrings {
       'De hoogste en laagste temperatuur van vandaag.';
 
   @override
+  String get screensaverOverlayForecastWidget => 'Weersvoorspelling';
+
+  @override
+  String get screensaverOverlayForecastDays => 'Getoonde dagen';
+
+  @override
+  String get screensaverOverlayForecastToday => 'Vandaag meenemen';
+
+  @override
+  String get screensaverOverlayForecastTodayHelp =>
+      'Begin de lijst met de voorspelling van vandaag.';
+
+  @override
+  String get screensaverOverlayForecastColored => 'Gekleurde pictogrammen';
+
+  @override
+  String get screensaverOverlayForecastColoredHelp =>
+      'Toon de weerpictogrammen in hun eigen kleuren.';
+
+  @override
   String get screensaverOverlayHumidity => 'Vochtigheid';
 
   @override
@@ -13429,6 +13868,14 @@ class UiStringsNl extends UiStrings {
   String screensaverWeatherFeelsLikeValue(String temperature) {
     return 'Gevoelstemperatuur: $temperature';
   }
+
+  @override
+  String get settingScreensaverWidgetsEnabledTitle =>
+      'Schermbeveiligingswidgets inschakelen';
+
+  @override
+  String get settingScreensaverWidgetsEnabledDescription =>
+      'Kleine elementen in de hoeken van de schermbeveiliging.';
 
   @override
   String get settingScreensaverWidgetsTitle => 'Widgets';
@@ -13474,6 +13921,9 @@ class UiStringsNl extends UiStrings {
 
   @override
   String get screensaverOverlayWidgetsEmpty => 'Nog geen widgets';
+
+  @override
+  String get screensaverOverlayShow => 'Deze widget tonen';
 
   @override
   String get screensaverOverlayRemove => 'Widget verwijderen';
@@ -13560,6 +14010,10 @@ class UiStringsNl extends UiStrings {
   @override
   String get searchBattery =>
       'Een batterijwidget in een hoek van de schermbeveiliging: de eigen lading van dit apparaat.';
+
+  @override
+  String get searchWeatherForecast =>
+      'Een voorspellingswidget in een hoek van de schermbeveiliging: de komende dagen met hun hoogste en laagste temperatuur.';
 
   @override
   String get searchPersonPermission =>
@@ -13727,8 +14181,8 @@ class UiStringsNl extends UiStrings {
   String get settingVoiceSeamlessWakeTitle => 'Praat direct na het wekwoord';
 
   @override
-  String get settingVoiceSeamlessWakeDescription =>
-      'Sla het wekgeluid over en neem op wat je direct na het wekwoord zegt.';
+  String get settingVoiceSeamlessWakeAssistDescription =>
+      'Sla het wekgeluid over en neem op wat je direct na het wekwoord zegt. Alleen voor Assist-pijplijnen, niet voor realtime gesprekken.';
 
   @override
   String get settingVoiceFollowupDelayTitle => 'Follow-upvertraging';

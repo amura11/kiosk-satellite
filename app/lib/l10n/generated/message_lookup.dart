@@ -67,6 +67,10 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'alarmsVoiceSection' => strings.alarmsVoiceSection,
       'alarmsVoiceManage' => strings.alarmsVoiceManage,
       'alarmsVoiceHint' => strings.alarmsVoiceHint,
+      'alarmsMusic' => strings.alarmsMusic,
+      'alarmsMusicNone' => strings.alarmsMusicNone,
+      'alarmsMusicRemove' => strings.alarmsMusicRemove,
+      'alarmsMusicHint' => strings.alarmsMusicHint,
       'androidAccessibilityHelp' => strings.androidAccessibilityHelp,
       'androidServiceChannelHelp' => strings.androidServiceChannelHelp,
       'androidServiceListening' => strings.androidServiceListening,
@@ -135,9 +139,40 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'calendarWidgetDays' => strings.calendarWidgetDays,
       'calendarWidgetTomorrow' => strings.calendarWidgetTomorrow,
       'calendarWidgetWeek' => strings.calendarWidgetWeek,
+      'calendarWidgetAllDay' => strings.calendarWidgetAllDay,
+      'calendarWidgetDots' => strings.calendarWidgetDots,
+      'calendarWidgetDotsHint' => strings.calendarWidgetDotsHint,
       'calendarVoiceSection' => strings.calendarVoiceSection,
       'calendarVoiceManage' => strings.calendarVoiceManage,
       'calendarVoiceHint' => strings.calendarVoiceHint,
+      'calendarNewEvent' => strings.calendarNewEvent,
+      'calendarEditEvent' => strings.calendarEditEvent,
+      'calendarFieldTitle' => strings.calendarFieldTitle,
+      'calendarFieldTitleHint' => strings.calendarFieldTitleHint,
+      'calendarFieldCalendars' => strings.calendarFieldCalendars,
+      'calendarFieldSharedHint' => strings.calendarFieldSharedHint,
+      'calendarFieldStarts' => strings.calendarFieldStarts,
+      'calendarFieldEnds' => strings.calendarFieldEnds,
+      'calendarFieldStartTime' => strings.calendarFieldStartTime,
+      'calendarFieldEndTime' => strings.calendarFieldEndTime,
+      'calendarFieldEndsBeforeStart' => strings.calendarFieldEndsBeforeStart,
+      'calendarFieldRepeat' => strings.calendarFieldRepeat,
+      'calendarRepeatNever' => strings.calendarRepeatNever,
+      'calendarRepeatWeekdays' => strings.calendarRepeatWeekdays,
+      'calendarFieldLocation' => strings.calendarFieldLocation,
+      'calendarFieldLocationHint' => strings.calendarFieldLocationHint,
+      'calendarFieldNotes' => strings.calendarFieldNotes,
+      'calendarFieldNotesHint' => strings.calendarFieldNotesHint,
+      'calendarEventAdded' => strings.calendarEventAdded,
+      'calendarEventSaved' => strings.calendarEventSaved,
+      'calendarEventDeleted' => strings.calendarEventDeleted,
+      'calendarSaveFailed' => strings.calendarSaveFailed,
+      'calendarDeleteFailed' => strings.calendarDeleteFailed,
+      'calendarSaveRepeatFollowing' => strings.calendarSaveRepeatFollowing,
+      'calendarScopeThis' => strings.calendarScopeThis,
+      'calendarScopeFollowing' => strings.calendarScopeFollowing,
+      'calendarScopeAll' => strings.calendarScopeAll,
+      'calendarEditingSection' => strings.calendarEditingSection,
       'cameraViewerTitle' => strings.cameraViewerTitle,
       'cameraViewerConnecting' => strings.cameraViewerConnecting,
       'cameraViewerReconnecting' => strings.cameraViewerReconnecting,
@@ -692,6 +727,16 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'intercomPlaying' => strings.intercomPlaying,
       'intercomAKiosk' => strings.intercomAKiosk,
       'intercomEndCall' => strings.intercomEndCall,
+      'intercomVoiceCall' => strings.intercomVoiceCall,
+      'intercomVideoCall' => strings.intercomVideoCall,
+      'intercomVoiceOnly' => strings.intercomVoiceOnly,
+      'intercomVideoAnswer' => strings.intercomVideoAnswer,
+      'intercomSwitchCamera' => strings.intercomSwitchCamera,
+      'intercomCameraButton' => strings.intercomCameraButton,
+      'intercomCameraOff' => strings.intercomCameraOff,
+      'intercomYourCameraOff' => strings.intercomYourCameraOff,
+      'intercomVideoReconnecting' => strings.intercomVideoReconnecting,
+      'intercomCameraOffNotice' => strings.intercomCameraOffNotice,
       'intercomCallFailed' => strings.intercomCallFailed,
       'intercomKeyFailed' => strings.intercomKeyFailed,
       'intercomBroadcastFailed' => strings.intercomBroadcastFailed,
@@ -876,6 +921,32 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'libraryVoiceSection' => strings.libraryVoiceSection,
       'libraryVoiceManage' => strings.libraryVoiceManage,
       'libraryVoiceHint' => strings.libraryVoiceHint,
+      'musicPickerTitle' => strings.musicPickerTitle,
+      'musicPickerSearchHint' => strings.musicPickerSearchHint,
+      'musicPickerMusicFrom' => strings.musicPickerMusicFrom,
+      'musicPickerPlaysOn' => strings.musicPickerPlaysOn,
+      'musicPickerRandom' => strings.musicPickerRandom,
+      'musicPickerRandomHint' => strings.musicPickerRandomHint,
+      'musicPickerAnyTrack' => strings.musicPickerAnyTrack,
+      'musicPickerAnyFavorite' => strings.musicPickerAnyFavorite,
+      'musicPickerAnyPlaylist' => strings.musicPickerAnyPlaylist,
+      'musicPickerAnyAlbum' => strings.musicPickerAnyAlbum,
+      'musicPickerAnyStation' => strings.musicPickerAnyStation,
+      'musicPickerRandomEach' => strings.musicPickerRandomEach,
+      'musicPickerWholeAlbum' => strings.musicPickerWholeAlbum,
+      'musicPickerWholePlaylist' => strings.musicPickerWholePlaylist,
+      'musicPickerWholeFolder' => strings.musicPickerWholeFolder,
+      'musicPickerAllTracks' => strings.musicPickerAllTracks,
+      'musicPickerShuffle' => strings.musicPickerShuffle,
+      'musicPickerPreview' => strings.musicPickerPreview,
+      'musicPickerStopPreview' => strings.musicPickerStopPreview,
+      'musicPickerPreviewFailed' => strings.musicPickerPreviewFailed,
+      'musicPickerNothing' => strings.musicPickerNothing,
+      'musicPickerNothingHint' => strings.musicPickerNothingHint,
+      'musicPickerFollowsNote' => strings.musicPickerFollowsNote,
+      'musicPickerSonosNote' => strings.musicPickerSonosNote,
+      'musicPickerNoSpeakers' => strings.musicPickerNoSpeakers,
+      'musicPickerKindFolder' => strings.musicPickerKindFolder,
       'offlineDashboard' => strings.offlineDashboard,
       'offlineNetwork' => strings.offlineNetwork,
       'offlinePageHelp' => strings.offlinePageHelp,
@@ -1295,6 +1366,8 @@ String messageById(UiStrings strings, String? id, String fallback) =>
         strings.settingAlarmsVolumeDescription,
       'settingAlarmsToneTitle' => strings.settingAlarmsToneTitle,
       'settingAlarmsToneDescription' => strings.settingAlarmsToneDescription,
+      'settingAlarmsMusicTitle' => strings.settingAlarmsMusicTitle,
+      'settingAlarmsMusicDescription' => strings.settingAlarmsMusicDescription,
       'settingAlarmsSnoozeMinutesTitle' =>
         strings.settingAlarmsSnoozeMinutesTitle,
       'settingAlarmsSnoozeMinutesDescription' =>
@@ -1365,12 +1438,19 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'settingCalendarDefaultViewDescription' =>
         strings.settingCalendarDefaultViewDescription,
       'settingCalendarWeekStartTitle' => strings.settingCalendarWeekStartTitle,
-      'settingCalendarWeekStartDescription' =>
-        strings.settingCalendarWeekStartDescription,
+      'settingCalendarWeekStartAppLanguageDescription' =>
+        strings.settingCalendarWeekStartAppLanguageDescription,
       'settingCalendarWeatherEntityTitle' =>
         strings.settingCalendarWeatherEntityTitle,
       'settingCalendarWeatherEntityDescription' =>
         strings.settingCalendarWeatherEntityDescription,
+      'settingCalendarAllowEditTitle' => strings.settingCalendarAllowEditTitle,
+      'settingCalendarAllowEditDescription' =>
+        strings.settingCalendarAllowEditDescription,
+      'settingCalendarAllowDeleteTitle' =>
+        strings.settingCalendarAllowDeleteTitle,
+      'settingCalendarAllowDeleteDescription' =>
+        strings.settingCalendarAllowDeleteDescription,
       'settingCalendarIdleCloseMinutesTitle' =>
         strings.settingCalendarIdleCloseMinutesTitle,
       'settingCalendarIdleCloseMinutesDescription' =>
@@ -2086,6 +2166,23 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'updateUploadedGone' => strings.updateUploadedGone,
       'updateShizukuInstallerFailed' => strings.updateShizukuInstallerFailed,
       'updateAnotherPackage' => strings.updateAnotherPackage,
+      'deviceKioskSatelliteUpdates' => strings.deviceKioskSatelliteUpdates,
+      'deviceAndroidSystemUpdates' => strings.deviceAndroidSystemUpdates,
+      'settingAndroidUpdatePolicyTitle' =>
+        strings.settingAndroidUpdatePolicyTitle,
+      'settingAndroidUpdatePolicyDescription' =>
+        strings.settingAndroidUpdatePolicyDescription,
+      'deviceAndroidUpdateAsk' => strings.deviceAndroidUpdateAsk,
+      'deviceAndroidUpdateAutomatic' => strings.deviceAndroidUpdateAutomatic,
+      'deviceAndroidUpdateWindowed' => strings.deviceAndroidUpdateWindowed,
+      'settingAndroidUpdateWindowStartTitle' =>
+        strings.settingAndroidUpdateWindowStartTitle,
+      'settingAndroidUpdateWindowStartDescription' =>
+        strings.settingAndroidUpdateWindowStartDescription,
+      'settingAndroidUpdateWindowEndTitle' =>
+        strings.settingAndroidUpdateWindowEndTitle,
+      'settingAndroidUpdateWindowEndDescription' =>
+        strings.settingAndroidUpdateWindowEndDescription,
       'settingUiLanguageTitle' => strings.settingUiLanguageTitle,
       'settingUiLanguageDescription' => strings.settingUiLanguageDescription,
       'settingUiThemeTitle' => strings.settingUiThemeTitle,
@@ -2608,6 +2705,21 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'intercomOptionHangupRingingIgnore' =>
         strings.intercomOptionHangupRingingIgnore,
       'intercomTalkSection' => strings.intercomTalkSection,
+      'settingIntercomVideoTitle' => strings.settingIntercomVideoTitle,
+      'settingIntercomVideoDescription' =>
+        strings.settingIntercomVideoDescription,
+      'settingIntercomVideoQualityTitle' =>
+        strings.settingIntercomVideoQualityTitle,
+      'settingIntercomVideoQualityDescription' =>
+        strings.settingIntercomVideoQualityDescription,
+      'intercomOptionVideoLow' => strings.intercomOptionVideoLow,
+      'intercomOptionVideoMedium' => strings.intercomOptionVideoMedium,
+      'intercomOptionVideoHigh' => strings.intercomOptionVideoHigh,
+      'intercomVideoSection' => strings.intercomVideoSection,
+      'settingIntercomAutoAnswerCameraTitle' =>
+        strings.settingIntercomAutoAnswerCameraTitle,
+      'settingIntercomAutoAnswerCameraDescription' =>
+        strings.settingIntercomAutoAnswerCameraDescription,
       'settingKioskAllowDrawerTitle' => strings.settingKioskAllowDrawerTitle,
       'settingKioskAllowDrawerDescription' =>
         strings.settingKioskAllowDrawerDescription,
@@ -3240,6 +3352,10 @@ String messageById(UiStrings strings, String? id, String fallback) =>
         strings.settingMicSoftwareEchoCancellationTitle,
       'settingMicSoftwareEchoCancellationDescription' =>
         strings.settingMicSoftwareEchoCancellationDescription,
+      'settingMicEchoCancellationMethodTitle' =>
+        strings.settingMicEchoCancellationMethodTitle,
+      'settingMicEchoCancellationMethodDescription' =>
+        strings.settingMicEchoCancellationMethodDescription,
       'settingMicNoiseSuppressionTitle' =>
         strings.settingMicNoiseSuppressionTitle,
       'settingMicNoiseSuppressionDescription' =>
@@ -3260,6 +3376,10 @@ String messageById(UiStrings strings, String? id, String fallback) =>
         strings.screenAudioCaptureRawMicrophone,
       'screenAudioCaptureVoiceCommunication' =>
         strings.screenAudioCaptureVoiceCommunication,
+      'screenAudioEchoMethodGtcrnDetected' =>
+        strings.screenAudioEchoMethodGtcrnDetected,
+      'screenAudioEchoMethodAec3Detected' =>
+        strings.screenAudioEchoMethodAec3Detected,
       'screenAudioDownmix' => strings.screenAudioDownmix,
       'screenAudioMicrophoneLevel' => strings.screenAudioMicrophoneLevel,
       'screenAudioMicrophoneLevelHelp' =>
@@ -3963,6 +4083,10 @@ String messageById(UiStrings strings, String? id, String fallback) =>
         strings.settingScreensaverImmichMetadataLocationTitle,
       'settingScreensaverImmichMetadataLocationDescription' =>
         strings.settingScreensaverImmichMetadataLocationDescription,
+      'settingScreensaverImmichMetadataDescriptionTitle' =>
+        strings.settingScreensaverImmichMetadataDescriptionTitle,
+      'settingScreensaverImmichMetadataDescriptionDescription' =>
+        strings.settingScreensaverImmichMetadataDescriptionDescription,
       'settingScreensaverImmichMetadataPositionTitle' =>
         strings.settingScreensaverImmichMetadataPositionTitle,
       'settingScreensaverImmichMetadataPositionDescription' =>
@@ -3986,8 +4110,6 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'screensaverMediaBottomRight' => strings.screensaverMediaBottomRight,
       'settingScreensaverImmichIntervalTitle' =>
         strings.settingScreensaverImmichIntervalTitle,
-      'settingScreensaverImmichIntervalDescription' =>
-        strings.settingScreensaverImmichIntervalDescription,
       'settingScreensaverImmichShuffleTitle' =>
         strings.settingScreensaverImmichShuffleTitle,
       'settingScreensaverImmichShuffleDescription' =>
@@ -4070,14 +4192,24 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'screensaverMediaFillOff' => strings.screensaverMediaFillOff,
       'screensaverMediaFillSmart' => strings.screensaverMediaFillSmart,
       'screensaverMediaFillAlways' => strings.screensaverMediaFillAlways,
+      'settingScreensaverVideoLengthTitle' =>
+        strings.settingScreensaverVideoLengthTitle,
+      'settingScreensaverVideoLengthDescription' =>
+        strings.settingScreensaverVideoLengthDescription,
+      'screensaverMediaVideoLengthFull' =>
+        strings.screensaverMediaVideoLengthFull,
+      'screensaverMediaVideoLengthInterval' =>
+        strings.screensaverMediaVideoLengthInterval,
+      'settingScreensaverImageIntervalDescription' =>
+        strings.settingScreensaverImageIntervalDescription,
+      'settingScreensaverPhotoIntervalDescription' =>
+        strings.settingScreensaverPhotoIntervalDescription,
       'settingScreensaverGalleryItemsTitle' =>
         strings.settingScreensaverGalleryItemsTitle,
       'settingScreensaverGalleryItemsDescription' =>
         strings.settingScreensaverGalleryItemsDescription,
       'settingScreensaverGalleryIntervalTitle' =>
         strings.settingScreensaverGalleryIntervalTitle,
-      'settingScreensaverGalleryIntervalDescription' =>
-        strings.settingScreensaverGalleryIntervalDescription,
       'settingScreensaverGalleryShuffleTitle' =>
         strings.settingScreensaverGalleryShuffleTitle,
       'settingScreensaverGalleryShuffleDescription' =>
@@ -4108,8 +4240,6 @@ String messageById(UiStrings strings, String? id, String fallback) =>
         strings.settingScreensaverMediaIdDescription,
       'settingScreensaverMediaIntervalTitle' =>
         strings.settingScreensaverMediaIntervalTitle,
-      'settingScreensaverMediaIntervalDescription' =>
-        strings.settingScreensaverMediaIntervalDescription,
       'settingScreensaverMediaShuffleTitle' =>
         strings.settingScreensaverMediaShuffleTitle,
       'settingScreensaverMediaShuffleDescription' =>
@@ -4177,8 +4307,6 @@ String messageById(UiStrings strings, String? id, String fallback) =>
         strings.settingScreensaverLocalFolderDescription,
       'settingScreensaverLocalIntervalTitle' =>
         strings.settingScreensaverLocalIntervalTitle,
-      'settingScreensaverLocalIntervalDescription' =>
-        strings.settingScreensaverLocalIntervalDescription,
       'settingScreensaverLocalShuffleTitle' =>
         strings.settingScreensaverLocalShuffleTitle,
       'settingScreensaverLocalShuffleDescription' =>
@@ -4552,9 +4680,25 @@ String messageById(UiStrings strings, String? id, String fallback) =>
         strings.screensaverOverlayForecastHelp,
       'screensaverOverlayHighLow' => strings.screensaverOverlayHighLow,
       'screensaverOverlayHighLowHelp' => strings.screensaverOverlayHighLowHelp,
+      'screensaverOverlayForecastWidget' =>
+        strings.screensaverOverlayForecastWidget,
+      'screensaverOverlayForecastDays' =>
+        strings.screensaverOverlayForecastDays,
+      'screensaverOverlayForecastToday' =>
+        strings.screensaverOverlayForecastToday,
+      'screensaverOverlayForecastTodayHelp' =>
+        strings.screensaverOverlayForecastTodayHelp,
+      'screensaverOverlayForecastColored' =>
+        strings.screensaverOverlayForecastColored,
+      'screensaverOverlayForecastColoredHelp' =>
+        strings.screensaverOverlayForecastColoredHelp,
       'screensaverOverlayHumidity' => strings.screensaverOverlayHumidity,
       'screensaverOverlayWind' => strings.screensaverOverlayWind,
       'screensaverOverlayVisibility' => strings.screensaverOverlayVisibility,
+      'settingScreensaverWidgetsEnabledTitle' =>
+        strings.settingScreensaverWidgetsEnabledTitle,
+      'settingScreensaverWidgetsEnabledDescription' =>
+        strings.settingScreensaverWidgetsEnabledDescription,
       'settingScreensaverWidgetsTitle' =>
         strings.settingScreensaverWidgetsTitle,
       'settingScreensaverWidgetsDescription' =>
@@ -4581,6 +4725,7 @@ String messageById(UiStrings strings, String? id, String fallback) =>
         strings.settingScreensaverVignetteStrengthDescription,
       'screensaverOverlayWidgetsEmpty' =>
         strings.screensaverOverlayWidgetsEmpty,
+      'screensaverOverlayShow' => strings.screensaverOverlayShow,
       'screensaverOverlayRemove' => strings.screensaverOverlayRemove,
       'screensaverOverlayAdd' => strings.screensaverOverlayAdd,
       'screensaverOverlayAddHelp' => strings.screensaverOverlayAddHelp,
@@ -4603,6 +4748,7 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'searchMasterVolume' => strings.searchMasterVolume,
       'searchSmallClock' => strings.searchSmallClock,
       'searchBattery' => strings.searchBattery,
+      'searchWeatherForecast' => strings.searchWeatherForecast,
       'searchPersonPermission' => strings.searchPersonPermission,
       'searchSonosSpeakers' => strings.searchSonosSpeakers,
       'voiceAppearanceHint' => strings.voiceAppearanceHint,
@@ -4655,8 +4801,8 @@ String messageById(UiStrings strings, String? id, String fallback) =>
       'voiceThisKiosk' => strings.voiceThisKiosk,
       'voiceSelectFailed' => strings.voiceSelectFailed,
       'settingVoiceSeamlessWakeTitle' => strings.settingVoiceSeamlessWakeTitle,
-      'settingVoiceSeamlessWakeDescription' =>
-        strings.settingVoiceSeamlessWakeDescription,
+      'settingVoiceSeamlessWakeAssistDescription' =>
+        strings.settingVoiceSeamlessWakeAssistDescription,
       'settingVoiceFollowupDelayTitle' =>
         strings.settingVoiceFollowupDelayTitle,
       'settingVoiceFollowupDelayDescription' =>

@@ -7,6 +7,7 @@ import 'generated/plugin_text_ids.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../managers/alarms/alarm_model.dart';
 import '../managers/settings/definitions.dart';
 import 'generated/message_lookup.dart';
 import 'generated/media_text_ids.dart';
@@ -79,7 +80,7 @@ extension LocalizedSetting on SettingDef<Object> {
     ).settingVoiceTimerNamedPhraseDescription('{name}'),
     'alarms.phrase' => l10n(
       context,
-    ).alarmsPhraseHint('{label}', '{time}', '{day}'),
+    ).alarmsPhraseVariables(alarmPhraseVariables),
     _ => messageById(l10n(context), descriptionMessageId, description),
   };
 }
@@ -447,6 +448,7 @@ String settingsPageText(
   // Its groups reuse the settings rail's group names.
   'Calendar' => switch (english) {
     'Display' || 'Kiosk' => navigationText(context, english),
+    'Editing' => l10n(context).calendarEditingSection,
     // The hand-built rows search finds.
     'Open calendar' => l10n(context).calendarOpen,
     'Show the calendar on this kiosk.' => l10n(context).calendarOpenHint,
@@ -492,6 +494,7 @@ String settingsPageText(
   'Intercom' => switch (english) {
     'Answer' => l10n(context).intercomAnswerSection,
     'Talk' => l10n(context).intercomTalkSection,
+    'Video' => l10n(context).intercomVideoSection,
     _ => intercomText(context, english),
   },
   _ => english,

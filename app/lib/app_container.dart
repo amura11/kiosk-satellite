@@ -4,6 +4,7 @@ import 'core/command_registry.dart';
 import 'core/event_bus.dart';
 import 'core/events.dart';
 import 'core/headless.dart';
+import 'core/locale_dates.dart';
 import 'core/logging.dart';
 import 'core/manager.dart';
 import 'managers/plugins/plugin_camera.dart';
@@ -68,6 +69,7 @@ import 'managers/settings/echo_image_settings.dart';
 import 'managers/settings/headless_settings.dart';
 import 'managers/settings/provisioning.dart';
 import 'managers/settings/settings_manager.dart';
+import 'managers/update/android_update_policy_manager.dart';
 import 'managers/update/system_update_manager.dart';
 import 'managers/update/update_manager.dart';
 import 'managers/voice/voice_manager.dart';
@@ -200,6 +202,7 @@ class AppContainer {
           : null,
     );
     systemUpdate = SystemUpdateManager(bus, commands, log);
+    androidUpdates = AndroidUpdatePolicyManager(bus, commands, log, settings);
     // After homeAssistant: it reads states through it for the fallback.
     glance = GlanceManager(bus, commands, log, settings, homeAssistant);
     shizuku = ShizukuManager(bus, commands, log);
@@ -219,7 +222,10 @@ class AppContainer {
         view: screensaver.activeView,
         night: screensaver.clockNight,
         nowPlaying: () => screensaver.nowPlayingShown,
+        nowPlayingShared: () => screensaver.nowPlayingShared,
         settings: settings,
+        setTint: screensaver.setPluginTint,
+        clearTint: screensaver.clearPluginTint,
       )
       ..camera = PluginCamera(
         motion: motion,
@@ -232,6 +238,7 @@ class AppContainer {
     // A snapshot binding the camera mid-scan would take it from the scanner.
     deviceCamera.scannerActive = () => motion.scannerHeld;
     settings.pluginScreensavers = () => plugins.screensaverOptions;
+    screensaver.pluginTouch = plugins.screensaverTouch;
     settings.pluginVoiceSkins = () => plugins.voiceSkinOptions;
     remote = RemoteManager(bus, commands, log, settings);
     fleet = FleetManager(bus, commands, log, settings);
@@ -260,12 +267,29 @@ class AppContainer {
       log,
       settings,
       nowPlaying: sendspin.nowPlaying,
+      playerArtwork: sendspin.loadArtwork,
     );
-    // The library is opaque and full screen too.
+    // The library is opaque and full screen too, and so are the calendar
+    // and Now Playing when it does not share the screen.
     musicLibrary.visible.addListener(
       () => browser.setCovered(
         'music library',
         covered: musicLibrary.visible.value,
+      ),
+    );
+    calendar.visible.addListener(
+      () => browser.setCovered('calendar', covered: calendar.visible.value),
+    );
+    screensaver.nowPlayingCovers.addListener(
+      () => browser.setCovered(
+        'now playing',
+        covered: screensaver.nowPlayingCovers.value,
+      ),
+    );
+    intercom.videoOnScreen.addListener(
+      () => browser.setCovered(
+        'intercom video',
+        covered: intercom.videoOnScreen.value,
       ),
     );
     voiceRequests = VoiceRequestsManager(bus, commands, log, settings);
@@ -344,6 +368,7 @@ class AppContainer {
   late final NotificationManager notifications;
   late final UpdateManager update;
   late final SystemUpdateManager systemUpdate;
+  late final AndroidUpdatePolicyManager androidUpdates;
   late final ShizukuManager shizuku;
   late final PluginManager plugins;
   late final RemoteManager remote;
@@ -421,6 +446,9 @@ class AppContainer {
     // Before btProxy too: its first catalog lists the Firmware entity only
     // once getSystemUpdateStatus says the image updates itself.
     systemUpdate,
+    // Before remote, whose first request reads the rows it hides on a
+    // device that is not the device owner.
+    androidUpdates,
     btProxy,
     files,
     glance,
@@ -458,6 +486,14 @@ class AppContainer {
 
   Future<void> init() async {
     await settings.init();
+    // Dates and numbers follow the app's language, not Android's. First on
+    // the bus, so a language change lands before any listener formats.
+    applyAppDateLanguage(settings.get(uiLanguage));
+    bus.on<SettingChanged>().listen((e) {
+      if (e.key == uiLanguage.key) {
+        applyAppDateLanguage(settings.get(uiLanguage));
+      }
+    });
     // An Echo image's first start: before the provisioning below, which
     // may override it, and before any manager reads its settings.
     await EchoDefaults(settings, log).apply();

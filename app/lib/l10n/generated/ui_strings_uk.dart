@@ -263,8 +263,8 @@ class UiStringsUk extends UiStrings {
   String get alarmsPhrase => 'Фраза';
 
   @override
-  String alarmsPhraseHint(String label, String time, String day) {
-    return '$label, $time і $day замінюються на мітку, час і день будильника.';
+  String alarmsPhraseVariables(String variables) {
+    return 'Доступні змінні: $variables';
   }
 
   @override
@@ -276,6 +276,19 @@ class UiStringsUk extends UiStrings {
   @override
   String get alarmsVoiceHint =>
       'Потрібні blueprint будильників Kiosk Satellite і агент розмови LLM у Home Assistant.';
+
+  @override
+  String get alarmsMusic => 'Музика';
+
+  @override
+  String get alarmsMusicNone => 'Немає';
+
+  @override
+  String get alarmsMusicRemove => 'Прибрати музику';
+
+  @override
+  String get alarmsMusicHint =>
+      'Грає замість мелодії. Якщо музику не вдасться відтворити, пролунає мелодія.';
 
   @override
   String get androidAccessibilityHelp =>
@@ -528,6 +541,16 @@ class UiStringsUk extends UiStrings {
   String get calendarWidgetWeek => 'Наступні 7 днів';
 
   @override
+  String get calendarWidgetAllDay => 'Показувати події на весь день';
+
+  @override
+  String get calendarWidgetDots => 'Кольорові крапки';
+
+  @override
+  String get calendarWidgetDotsHint =>
+      'Позначати події кольором їхнього календаря замість фото людини.';
+
+  @override
   String get calendarVoiceSection => 'Голосовий календар';
 
   @override
@@ -536,6 +559,137 @@ class UiStringsUk extends UiStrings {
   @override
   String get calendarVoiceHint =>
       'Потрібні blueprint календаря Kiosk Satellite і агент розмови LLM у Home Assistant.';
+
+  @override
+  String get calendarNewEvent => 'Нова подія';
+
+  @override
+  String get calendarEditEvent => 'Редагувати подію';
+
+  @override
+  String get calendarFieldTitle => 'Назва';
+
+  @override
+  String get calendarFieldTitleHint => 'Додайте назву';
+
+  @override
+  String get calendarFieldCalendars => 'Календарі';
+
+  @override
+  String get calendarFieldSharedHint =>
+      'Показується один раз, розділена між їхніми кольорами.';
+
+  @override
+  String get calendarFieldStarts => 'Початок';
+
+  @override
+  String get calendarFieldEnds => 'Кінець';
+
+  @override
+  String get calendarFieldStartTime => 'Час початку';
+
+  @override
+  String get calendarFieldEndTime => 'Час закінчення';
+
+  @override
+  String get calendarFieldEndsBeforeStart => 'Кінець раніше за початок.';
+
+  @override
+  String get calendarFieldRepeat => 'Повторення';
+
+  @override
+  String get calendarRepeatNever => 'Не повторюється';
+
+  @override
+  String get calendarRepeatWeekdays => 'Щобудня';
+
+  @override
+  String calendarRepeatWeeklyOn(String weekday) {
+    return 'Щотижня ($weekday)';
+  }
+
+  @override
+  String calendarRepeatMonthlyOn(String day) {
+    return 'Щомісяця $day числа';
+  }
+
+  @override
+  String calendarRepeatYearlyOn(String date) {
+    return 'Щороку $date';
+  }
+
+  @override
+  String get calendarFieldLocation => 'Місце';
+
+  @override
+  String get calendarFieldLocationHint => 'Додайте місце';
+
+  @override
+  String get calendarFieldNotes => 'Нотатки';
+
+  @override
+  String get calendarFieldNotesHint => 'Додайте нотатки';
+
+  @override
+  String get calendarEventAdded => 'Подію додано';
+
+  @override
+  String get calendarEventSaved => 'Зміни збережено';
+
+  @override
+  String get calendarEventDeleted => 'Подію видалено';
+
+  @override
+  String get calendarSaveFailed => 'Не вдалося зберегти подію';
+
+  @override
+  String get calendarDeleteFailed => 'Не вдалося видалити подію';
+
+  @override
+  String calendarEditReadOnly(String calendar) {
+    return '$calendar лише для читання.';
+  }
+
+  @override
+  String calendarEditGone(String calendar) {
+    return 'Події більше немає в $calendar.';
+  }
+
+  @override
+  String calendarEditNotAllowed(String calendar) {
+    return 'Користувач Home Assistant цього кіоска не може змінювати $calendar.';
+  }
+
+  @override
+  String calendarDeleteTitle(String title) {
+    return 'Видалити $title?';
+  }
+
+  @override
+  String calendarDeleteShared(String names) {
+    return 'Подію буде видалено з усіх календарів, де вона є: $names.';
+  }
+
+  @override
+  String calendarSaveRepeatTitle(String title) {
+    return 'Зберегти зміни в $title?';
+  }
+
+  @override
+  String get calendarSaveRepeatFollowing =>
+      'Нове повторення починається з цього дня.';
+
+  @override
+  String get calendarScopeThis => 'Ця подія';
+
+  @override
+  String get calendarScopeFollowing => 'Ця й наступні події';
+
+  @override
+  String get calendarScopeAll => 'Усі події';
+
+  @override
+  String get calendarEditingSection => 'Редагування';
 
   @override
   String get cameraViewerTitle => 'Перегляд камери';
@@ -2571,6 +2725,11 @@ class UiStringsUk extends UiStrings {
   String get intercomCalling => 'Виклик…';
 
   @override
+  String intercomAnswersWithCameraIn(String seconds) {
+    return 'Камера ввімкнеться через $seconds с';
+  }
+
+  @override
   String intercomAnswersIn(String seconds) {
     return 'Відповідь через $seconds с';
   }
@@ -2677,6 +2836,37 @@ class UiStringsUk extends UiStrings {
 
   @override
   String get intercomEndCall => 'Завершити виклик';
+
+  @override
+  String get intercomVoiceCall => 'Голосовий виклик';
+
+  @override
+  String get intercomVideoCall => 'Відеовиклик';
+
+  @override
+  String get intercomVoiceOnly => 'Лише голос';
+
+  @override
+  String get intercomVideoAnswer => 'Відео';
+
+  @override
+  String get intercomSwitchCamera => 'Перемкнути камеру';
+
+  @override
+  String get intercomCameraButton => 'Камера';
+
+  @override
+  String get intercomCameraOff => 'Камеру вимкнено';
+
+  @override
+  String get intercomYourCameraOff => 'Вашу камеру вимкнено';
+
+  @override
+  String get intercomVideoReconnecting => 'Відновлення відео…';
+
+  @override
+  String get intercomCameraOffNotice =>
+      'Камеру вимкнено. Цей кіоск може показувати відео, але не надсилати його.';
 
   @override
   String get intercomCallFailed => 'Не вдалося здійснити виклик';
@@ -3249,6 +3439,107 @@ class UiStringsUk extends UiStrings {
   @override
   String get libraryVoiceHint =>
       'Потрібні blueprint музики Kiosk Satellite і агент розмови LLM у Home Assistant.';
+
+  @override
+  String get musicPickerTitle => 'Вибір музики';
+
+  @override
+  String get musicPickerSearchHint => 'Пошук музики';
+
+  @override
+  String get musicPickerMusicFrom => 'Музика з';
+
+  @override
+  String get musicPickerPlaysOn => 'Грає на';
+
+  @override
+  String musicPickerSourceLabel(String name) {
+    return 'Джерело: $name';
+  }
+
+  @override
+  String musicPickerSpeakerLabel(String name) {
+    return 'Грає на: $name';
+  }
+
+  @override
+  String get musicPickerRandom => 'Випадково';
+
+  @override
+  String get musicPickerRandomHint => 'Щоразу новий вибір';
+
+  @override
+  String get musicPickerAnyTrack => 'Будь-який трек';
+
+  @override
+  String get musicPickerAnyFavorite => 'Будь-яке з улюбленого';
+
+  @override
+  String get musicPickerAnyPlaylist => 'Будь-який плейлист';
+
+  @override
+  String get musicPickerAnyAlbum => 'Будь-який альбом';
+
+  @override
+  String get musicPickerAnyStation => 'Будь-яка радіостанція';
+
+  @override
+  String get musicPickerRandomEach => 'Щоразу інше';
+
+  @override
+  String get musicPickerWholeAlbum => 'Увесь альбом';
+
+  @override
+  String get musicPickerWholePlaylist => 'Увесь плейлист';
+
+  @override
+  String musicPickerWholeArtist(String name) {
+    return 'Усе від $name';
+  }
+
+  @override
+  String get musicPickerWholeFolder => 'Уся папка';
+
+  @override
+  String get musicPickerAllTracks => 'Усі треки';
+
+  @override
+  String get musicPickerShuffle => 'Перемішування';
+
+  @override
+  String get musicPickerPreview => 'Прослухати';
+
+  @override
+  String get musicPickerStopPreview => 'Зупинити прослуховування';
+
+  @override
+  String get musicPickerPreviewFailed => 'Не вдалося відтворити музику';
+
+  @override
+  String get musicPickerNothing => 'Нічого не вибрано';
+
+  @override
+  String get musicPickerNothingHint =>
+      'Виберіть трек, альбом, плейлист, виконавця або станцію';
+
+  @override
+  String get musicPickerFollowsNote =>
+      '«Зараз грає» перемикається на цей динамік, поки грає музика.';
+
+  @override
+  String get musicPickerSonosNote =>
+      'Музика Sonos грає лише на динаміках Sonos.';
+
+  @override
+  String get musicPickerNoSpeakers => 'Немає динаміків для відтворення';
+
+  @override
+  String musicPickerOpen(String title) {
+    return 'Відкрити $title';
+  }
+
+  @override
+  String get musicPickerKindFolder => 'Папка';
 
   @override
   String get offlineDashboard => 'Панель керування недоступна';
@@ -4411,6 +4702,16 @@ class UiStringsUk extends UiStrings {
   String get overviewSystemUpdate => 'Доступне оновлення системи';
 
   @override
+  String overviewPluginUpdate(String name) {
+    return 'Доступне оновлення $name';
+  }
+
+  @override
+  String overviewPluginUpdateHelp(String version) {
+    return 'Версія $version готова до перегляду та встановлення.';
+  }
+
+  @override
   String overviewSystemImageUpdateHelp(String version) {
     return 'Версія $version образу системи готова до встановлення. Для цього пристрій двічі перезапуститься.';
   }
@@ -4808,6 +5109,13 @@ class UiStringsUk extends UiStrings {
       'Відтворюється з гучністю будильника.';
 
   @override
+  String get settingAlarmsMusicTitle => 'Музика будильника';
+
+  @override
+  String get settingAlarmsMusicDescription =>
+      'Грає замість мелодії. Якщо музику не вдасться відтворити, пролунає мелодія.';
+
+  @override
   String get settingAlarmsSnoozeMinutesTitle => 'Тривалість відкладення';
 
   @override
@@ -4969,8 +5277,8 @@ class UiStringsUk extends UiStrings {
   String get settingCalendarWeekStartTitle => 'Тиждень починається з';
 
   @override
-  String get settingCalendarWeekStartDescription =>
-      'Відповідає мові пристрою, якщо не вибрано інше.';
+  String get settingCalendarWeekStartAppLanguageDescription =>
+      'Відповідає мові застосунку, якщо не вибрано інше.';
 
   @override
   String get settingCalendarWeatherEntityTitle => 'Погода';
@@ -4978,6 +5286,21 @@ class UiStringsUk extends UiStrings {
   @override
   String get settingCalendarWeatherEntityDescription =>
       'Додає прогноз до кожного дня.';
+
+  @override
+  String get settingCalendarAllowEditTitle =>
+      'Дозволити додавати й редагувати події';
+
+  @override
+  String get settingCalendarAllowEditDescription =>
+      'Додає до календаря кнопки Нова подія та Редагувати.';
+
+  @override
+  String get settingCalendarAllowDeleteTitle => 'Дозволити видаляти події';
+
+  @override
+  String get settingCalendarAllowDeleteDescription =>
+      'Додає до кожної події кнопку Видалити.';
 
   @override
   String get settingCalendarIdleCloseMinutesTitle =>
@@ -7367,6 +7690,43 @@ class UiStringsUk extends UiStrings {
   String get updateAnotherPackage => 'інший пакет';
 
   @override
+  String get deviceKioskSatelliteUpdates => 'Оновлення Kiosk Satellite';
+
+  @override
+  String get deviceAndroidSystemUpdates => 'Системні оновлення Android';
+
+  @override
+  String get settingAndroidUpdatePolicyTitle =>
+      'Встановлювати оновлення Android';
+
+  @override
+  String get settingAndroidUpdatePolicyDescription =>
+      'Оновлення самого Android від виробника пристрою, наприклад Google або Samsung. Режим кіоска приховує запит на перезапуск для їх встановлення.';
+
+  @override
+  String get deviceAndroidUpdateAsk => 'Питати на пристрої';
+
+  @override
+  String get deviceAndroidUpdateAutomatic => 'Одразу';
+
+  @override
+  String get deviceAndroidUpdateWindowed => 'У часовому вікні';
+
+  @override
+  String get settingAndroidUpdateWindowStartTitle => 'Встановлювати з';
+
+  @override
+  String get settingAndroidUpdateWindowStartDescription =>
+      'Локальний час початку щоденного вікна для встановлення й перезапуску.';
+
+  @override
+  String get settingAndroidUpdateWindowEndTitle => 'Встановлювати до';
+
+  @override
+  String get settingAndroidUpdateWindowEndDescription =>
+      'Локальний час завершення вікна. Вікно, що переходить через північ, закінчується наступного дня.';
+
+  @override
   String get settingUiLanguageTitle => 'Мова';
 
   @override
@@ -8925,6 +9285,40 @@ class UiStringsUk extends UiStrings {
   String get intercomTalkSection => 'Розмова';
 
   @override
+  String get settingIntercomVideoTitle => 'Відеовиклики';
+
+  @override
+  String get settingIntercomVideoDescription =>
+      'Надсилає та показує відео під час викликів.';
+
+  @override
+  String get settingIntercomVideoQualityTitle => 'Якість відео';
+
+  @override
+  String get settingIntercomVideoQualityDescription =>
+      'Вища якість використовує більше ресурсів процесора.';
+
+  @override
+  String get intercomOptionVideoLow => 'Низька';
+
+  @override
+  String get intercomOptionVideoMedium => 'Середня';
+
+  @override
+  String get intercomOptionVideoHigh => 'Висока';
+
+  @override
+  String get intercomVideoSection => 'Відео';
+
+  @override
+  String get settingIntercomAutoAnswerCameraTitle =>
+      'Відповідати з увімкненою камерою';
+
+  @override
+  String get settingIntercomAutoAnswerCameraDescription =>
+      'Відеовиклики з автоматичною відповіддю відкриваються з увімкненою камерою.';
+
+  @override
   String get settingKioskAllowDrawerTitle => 'Дозволити меню зі швидкими діями';
 
   @override
@@ -10479,6 +10873,13 @@ class UiStringsUk extends UiStrings {
       'Прибирає з мікрофона власні звуки кіоска, щоб їх не чули ні слово активації, ні асистент. Залишайте увімкненим, якщо тільки мікрофон із власним ехопоглинанням не звучить гірше з ним.';
 
   @override
+  String get settingMicEchoCancellationMethodTitle => 'Метод ехопоглинання';
+
+  @override
+  String get settingMicEchoCancellationMethodDescription =>
+      'Автоматично перевіряє GTCRN, поки кіоск відтворює звуки, і перемикається на AEC3, якщо лишається забагато відлуння. Виберіть Автоматично, щоб повторити перевірку.';
+
+  @override
   String get settingMicNoiseSuppressionTitle => 'Шумозаглушення';
 
   @override
@@ -10529,6 +10930,12 @@ class UiStringsUk extends UiStrings {
 
   @override
   String get screenAudioCaptureVoiceCommunication => 'Голосовий зв\'язок';
+
+  @override
+  String get screenAudioEchoMethodGtcrnDetected => 'GTCRN (виявлено)';
+
+  @override
+  String get screenAudioEchoMethodAec3Detected => 'AEC3 (виявлено)';
 
   @override
   String get screenAudioDownmix => 'Зведення доріжок (за замовчуванням)';
@@ -12080,6 +12487,13 @@ class UiStringsUk extends UiStrings {
       'Показувати місце, де було зроблено фото.';
 
   @override
+  String get settingScreensaverImmichMetadataDescriptionTitle => 'Опис';
+
+  @override
+  String get settingScreensaverImmichMetadataDescriptionDescription =>
+      'Показувати опис фото внизу екрана.';
+
+  @override
   String get settingScreensaverImmichMetadataPositionTitle =>
       'Розташування метаданих';
 
@@ -12126,10 +12540,6 @@ class UiStringsUk extends UiStrings {
 
   @override
   String get settingScreensaverImmichIntervalTitle => 'Секунд на зображення';
-
-  @override
-  String get settingScreensaverImmichIntervalDescription =>
-      'Скільки часу кожне зображення показується перед наступним. Відео відтворюються повністю.';
 
   @override
   String get settingScreensaverImmichShuffleTitle => 'Випадковий порядок';
@@ -12334,6 +12744,27 @@ class UiStringsUk extends UiStrings {
   String get screensaverMediaFillAlways => 'Завжди';
 
   @override
+  String get settingScreensaverVideoLengthTitle => 'Тривалість відео';
+
+  @override
+  String get settingScreensaverVideoLengthDescription =>
+      'Скільки часу кожне відео відтворюється перед наступним.';
+
+  @override
+  String get screensaverMediaVideoLengthFull => 'Усе відео';
+
+  @override
+  String get screensaverMediaVideoLengthInterval => 'Як фото';
+
+  @override
+  String get settingScreensaverImageIntervalDescription =>
+      'Скільки часу кожне зображення показується перед наступним.';
+
+  @override
+  String get settingScreensaverPhotoIntervalDescription =>
+      'Скільки часу кожне фото показується перед наступним.';
+
+  @override
   String get settingScreensaverGalleryItemsTitle => 'Фотографії';
 
   @override
@@ -12342,10 +12773,6 @@ class UiStringsUk extends UiStrings {
 
   @override
   String get settingScreensaverGalleryIntervalTitle => 'Секунд на фото';
-
-  @override
-  String get settingScreensaverGalleryIntervalDescription =>
-      'Скільки часу кожне фото показується перед наступним. Відео відтворюються повністю.';
 
   @override
   String get settingScreensaverGalleryShuffleTitle => 'Випадковий порядок';
@@ -12419,10 +12846,6 @@ class UiStringsUk extends UiStrings {
 
   @override
   String get settingScreensaverMediaIntervalTitle => 'Секунд на зображення';
-
-  @override
-  String get settingScreensaverMediaIntervalDescription =>
-      'Скільки часу кожне зображення показується перед наступним. Відео відтворюються повністю.';
 
   @override
   String get settingScreensaverMediaShuffleTitle => 'Випадковий порядок';
@@ -12566,10 +12989,6 @@ class UiStringsUk extends UiStrings {
 
   @override
   String get settingScreensaverLocalIntervalTitle => 'Секунд на фото';
-
-  @override
-  String get settingScreensaverLocalIntervalDescription =>
-      'Скільки часу кожне фото показується перед наступним. Відео відтворюються повністю.';
 
   @override
   String get settingScreensaverLocalShuffleTitle => 'Випадковий порядок';
@@ -13405,6 +13824,26 @@ class UiStringsUk extends UiStrings {
       'Максимальна та мінімальна температура сьогодні.';
 
   @override
+  String get screensaverOverlayForecastWidget => 'Прогноз погоди';
+
+  @override
+  String get screensaverOverlayForecastDays => 'Показано днів';
+
+  @override
+  String get screensaverOverlayForecastToday => 'Включати сьогодні';
+
+  @override
+  String get screensaverOverlayForecastTodayHelp =>
+      'Почати список із прогнозу на сьогодні.';
+
+  @override
+  String get screensaverOverlayForecastColored => 'Кольорові піктограми';
+
+  @override
+  String get screensaverOverlayForecastColoredHelp =>
+      'Показувати піктограми погоди у власних кольорах.';
+
+  @override
   String get screensaverOverlayHumidity => 'Вологість';
 
   @override
@@ -13417,6 +13856,14 @@ class UiStringsUk extends UiStrings {
   String screensaverWeatherFeelsLikeValue(String temperature) {
     return 'Відчувається як $temperature';
   }
+
+  @override
+  String get settingScreensaverWidgetsEnabledTitle =>
+      'Увімкнути віджети заставки';
+
+  @override
+  String get settingScreensaverWidgetsEnabledDescription =>
+      'Невеликі накладення в кутах заставки.';
 
   @override
   String get settingScreensaverWidgetsTitle => 'Віджети';
@@ -13465,6 +13912,9 @@ class UiStringsUk extends UiStrings {
 
   @override
   String get screensaverOverlayWidgetsEmpty => 'Віджетів ще немає';
+
+  @override
+  String get screensaverOverlayShow => 'Показувати цей віджет';
 
   @override
   String get screensaverOverlayRemove => 'Видалити віджет';
@@ -13550,6 +14000,10 @@ class UiStringsUk extends UiStrings {
   @override
   String get searchBattery =>
       'Віджет акумулятора в кутку заставки: рівень заряду цього пристрою.';
+
+  @override
+  String get searchWeatherForecast =>
+      'Віджет прогнозу в кутку заставки: найближчі дні з максимальною та мінімальною температурою.';
 
   @override
   String get searchPersonPermission =>
@@ -13714,8 +14168,8 @@ class UiStringsUk extends UiStrings {
       'Говорити одразу після слова активації';
 
   @override
-  String get settingVoiceSeamlessWakeDescription =>
-      'Пропускає звук активації та зберігає те, що ви кажете одразу після слова активації.';
+  String get settingVoiceSeamlessWakeAssistDescription =>
+      'Пропускає звук активації та зберігає те, що ви кажете одразу після слова активації. Лише для конвеєрів Assist, не для розмов у реальному часі.';
 
   @override
   String get settingVoiceFollowupDelayTitle => 'Затримка перед уточненням';

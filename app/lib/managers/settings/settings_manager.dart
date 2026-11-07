@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -121,11 +122,25 @@ class SettingsManager extends Manager {
     ];
   }
 
+  /// Automatic and the two cancellers, the one Automatic settled on in
+  /// place of its own entry (shown as "GTCRN (detected)"). Picking
+  /// Automatic again drops the verdict.
+  List<String> _echoMethodOptions() {
+    final current = get(micEchoCancellationMethod);
+    return [
+      'auto',
+      for (final method in ['gtcrn', 'aec3'])
+        current == 'auto:$method' ? current : method,
+    ];
+  }
+
   List<String> optionsFor(SettingDef<Object> def) =>
       def.key == cameraRtspResolution.key
       ? _cameraStreamResolutions ?? const []
       : def.key == voiceAmazonLocale.key
       ? ['', ...PryonCatalog.locales]
+      : def.key == micEchoCancellationMethod.key
+      ? _echoMethodOptions()
       : _realtimeOptions(def) ??
             [
               for (final option in def.options ?? const <String>[])
@@ -420,6 +435,17 @@ class SettingsManager extends Manager {
         'Voice Satellite runtime set to ${assigned ? 'dashboard' : 'native'}',
       );
     }
+    // The calendar and alarms used to follow Android's clock. They keep
+    // what they showed and are the user's to change from here on. Written
+    // once, so a fresh install starts on the device's clock too.
+    for (final clock in [calendarClock24h, alarmsClock24h]) {
+      if (_prefs.get(_prefix + clock.key) == null) {
+        await _prefs.setBool(
+          _prefix + clock.key,
+          PlatformDispatcher.instance.alwaysUse24HourFormat,
+        );
+      }
+    }
     // The preview's automatic language choice is now explicit English.
     if (_prefs.get(_prefix + uiLanguage.key) == 'system') {
       await _prefs.setString(_prefix + uiLanguage.key, 'en');
@@ -505,8 +531,7 @@ class SettingsManager extends Manager {
     // old values go: the switches are links now and hold nothing.
     if (_prefs.get(_prefix + uiDrawerItems.key) == null) {
       final hidden = <String>{
-        for (final MapEntry(key: key, value: id)
-            in drawerItemLinks.entries)
+        for (final MapEntry(key: key, value: id) in drawerItemLinks.entries)
           if (!(_prefs.get(_prefix + key) as bool? ??
               !drawerItemsOffByDefault.contains(id)))
             id,
@@ -977,7 +1002,14 @@ class SettingsManager extends Manager {
     // A kiosk's place in a fleet is its own too: a clone must not lead the
     // original's followers (their tokens name the original) or believe it
     // follows the original's leader.
+    final importedFleetId = map[fleetId.key];
     map.removeWhere((k, _) => k.startsWith('fleet.'));
+    if (importedFleetId is String &&
+        importedFleetId.isNotEmpty &&
+        get(fleetId) == importedFleetId) {
+      // The fleet manager writes this device's Android ID back.
+      await set(fleetId, '');
+    }
     final importedName = map.remove(deviceName.key);
     final importedPlayer = map.remove(sendspinClientId.key);
     final importedNode = map.remove(esphomeNodeName.key);

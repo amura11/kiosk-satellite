@@ -25,6 +25,7 @@ import 'lrclib.dart';
 import 'lyrics.dart';
 import 'ma_remote_player.dart';
 import 'music_assistant_api.dart';
+import 'player_handoff.dart';
 import 'remote_player.dart';
 import 'session_player.dart';
 import 'sonos_client.dart';
@@ -54,6 +55,10 @@ class SendspinManager extends Manager {
   String get name => 'sendspin';
 
   Timer? _restartDebounce;
+
+  /// A setting the client was started with changed since the debounced
+  /// sync last ran.
+  bool _restartPending = false;
 
   /// Serialises start/stop so a settings burst cannot interleave two
   /// client lifecycles.
@@ -1132,6 +1137,9 @@ class SendspinManager extends Manager {
 
   @override
   Future<void> init() async {
+    // A restart in the middle of a lend: the feature holding the player
+    // starts over, so the kiosk goes back to its own player first.
+    await handoff.recover();
     nowPlaying.addListener(_remoteMediaChanged);
     nowPlaying.addListener(_onTrackChanged);
     nowPlaying.addListener(_publishMediaSummary);
@@ -1307,10 +1315,7 @@ class SendspinManager extends Manager {
       } else {
         _voiceReasons.remove(e.reason);
       }
-      final active = _voiceReasons.isNotEmpty;
-      if (active == voiceActive.value) return;
-      voiceActive.value = active;
-      _syncDucking();
+      _syncVoiceActive();
     });
 
     // The AirPlay receiver's sessions, for its follower while it is the
@@ -1485,6 +1490,7 @@ class SendspinManager extends Manager {
         'sendspin.lyrics_source',
         'sendspin.lyrics_fallback_ma',
         'sendspin.player_active',
+        'sendspin.kept_for',
         'sendspin.local_player_name',
       ];
       final relevant =
@@ -1493,17 +1499,70 @@ class SendspinManager extends Manager {
               !uiOnly.contains(e.key) ||
           e.key == defs.deviceName.key;
       if (!relevant) return;
+      // A new pick decides whether the client runs. Only a setting the
+      // client was started with needs it restarted.
+      if (e.key != defs.sendspinPlayer.key &&
+          e.key != defs.sendspinPlayerSource.key) {
+        _restartPending = true;
+      }
       _restartDebounce?.cancel();
       _restartDebounce = Timer(const Duration(seconds: 1), () {
-        _transition = _transition.then((_) async {
-          await _stop();
-          if (_settings.get(defs.sendspinEnabled) && !_remotePicked) {
-            await _start();
-          }
-        });
+        final restart = _restartPending;
+        _restartPending = false;
+        _transition = _transition.then((_) => _syncLocal(restart: restart));
       });
     });
 
+    commands.register(
+      Command(
+        name: 'mediaBorrow',
+        description:
+            'Lend the followed player to a feature: Now Playing follows '
+            'the player given until mediaReturn with the same owner puts '
+            'the one before back.',
+        params: const {
+          'owner': 'who borrows it, alarm for one',
+          'player':
+              "the player pick: '' for this device, else ma:, ha: or "
+              'sonos: and its id',
+          'name': 'the player name',
+        },
+        handler: (p) async {
+          final owner = '${p['owner'] ?? ''}'.trim();
+          if (owner.isEmpty) return const CommandResult.fail('no owner');
+          final player = '${p['player'] ?? ''}'.trim();
+          if (player.isEmpty && !_settings.get(defs.sendspinEnabled)) {
+            return const CommandResult.fail(
+              'this device has no Sendspin player',
+            );
+          }
+          await handoff.borrow(owner, player, '${p['name'] ?? ''}');
+          _syncVoiceActive();
+          log.info(
+            name,
+            'player lent to $owner: ${player.isEmpty ? 'this device' : player}',
+          );
+          return const CommandResult.ok();
+        },
+      ),
+    );
+    commands.register(
+      Command(
+        name: 'mediaReturn',
+        description:
+            'Give back a player lent by mediaBorrow: the last owner out '
+            'puts the player followed before back.',
+        params: const {'owner': 'who borrowed it'},
+        handler: (p) async {
+          final owner = '${p['owner'] ?? ''}'.trim();
+          if (!handoff.owners.contains(owner)) return const CommandResult.ok();
+          await handoff.giveBack(owner);
+          _syncVoiceActive();
+          log.info(name, 'player given back by $owner');
+          return const CommandResult.ok();
+        },
+      ),
+    );
     commands.register(
       Command(
         name: 'albumArtCacheStats',
@@ -2021,13 +2080,45 @@ class SendspinManager extends Manager {
     );
 
     _syncFlags();
-    // A remote pick means the device is a remote control, not a player:
-    // the local client stays down so Music Assistant shows this device
-    // offline rather than as a speaker nobody should queue to.
-    if (_settings.get(defs.sendspinEnabled) && !_remotePicked) {
-      _transition = _transition.then((_) => _start());
-    }
+    _transition = _transition.then((_) => _syncLocal());
     _syncRemote();
+  }
+
+  /// Whether anything that ducks the music is going on: a voice turn,
+  /// an announcement, an alarm ringing its tone. A ringing alarm whose
+  /// music this is does not duck it: the player is lent to the alarm
+  /// then, and the music is what rings.
+  void _syncVoiceActive() {
+    final alarmMusic = handoff.owners.contains('alarm');
+    final active = _voiceReasons.any((r) => !(alarmMusic && r == 'alarm'));
+    if (active == voiceActive.value) return;
+    voiceActive.value = active;
+    _syncDucking();
+  }
+
+  /// Lends the followed player to an alarm and takes it back.
+  late final handoff = PlayerHandoff(
+    read: () => (
+      source: _settings.get(defs.sendspinPlayerSource),
+      player: _settings.get(defs.sendspinPlayer),
+      name: _settings.get(defs.sendspinPlayerName),
+    ),
+    follow: _follow,
+    load: () => _settings.get(defs.sendspinHandoff),
+    save: (json) => _settings.set(defs.sendspinHandoff, json),
+  );
+
+  /// Follow [p] the way the Media Player page picks one: the source first,
+  /// so the pick that follows is one of its own and the reconcile that
+  /// trails a source change has nothing to clear.
+  Future<void> _follow(FollowedPlayer p) async {
+    await _settings.set(defs.sendspinPlayerSource, p.source);
+    await Future<void>.delayed(Duration.zero);
+    await _settings.set(defs.sendspinPlayer, p.player);
+    await _settings.set(defs.sendspinPlayerName, p.name);
+    if (p.source.isNotEmpty) {
+      await _settings.set(defs.sendspinPlayerActive, true);
+    }
   }
 
   /// The player the surfaces are set to follow.
@@ -2147,6 +2238,57 @@ class SendspinManager extends Manager {
   bool get _remotePicked =>
       _settings.get(defs.sendspinPlayerSource).isNotEmpty || !_source.isLocal;
 
+  /// A remote pick means the device is a remote control, not a player:
+  /// the local client stays down so Music Assistant shows this device
+  /// offline rather than as a speaker nobody should queue to. The exception
+  /// is a followed group this device is in, which needs it to play.
+  bool get _localWanted =>
+      _settings.get(defs.sendspinEnabled) && (!_remotePicked || _keptForPick);
+
+  /// Whether the last read found this device in the followed player's group.
+  bool get _keptForPick {
+    final kept = _settings.get(defs.sendspinKeptFor);
+    return kept.isNotEmpty && kept == _source.value;
+  }
+
+  /// Bring the local client in line with the pick. [restart] also restarts
+  /// a client that keeps running, for a setting it was started with.
+  Future<void> _syncLocal({bool restart = false}) async {
+    await _readGroupHold();
+    final want = _localWanted;
+    if (restart || !want) await _stop();
+    if (want && !_running) await _start();
+  }
+
+  /// Ask Music Assistant whether the followed player's group has this
+  /// device in it. No answer keeps what was known for this pick.
+  Future<void> _readGroupHold() async {
+    final source = _source;
+    final clientId = _settings.get(defs.sendspinClientId).trim();
+    var kept = '';
+    if (source.kind == PlayerSourceKind.musicAssistant &&
+        source.id.isNotEmpty &&
+        _settings.get(defs.sendspinEnabled) &&
+        _maConfigured &&
+        clientId.isNotEmpty) {
+      final holds = await _api().groupHolds(
+        source.id,
+        clientId,
+        ownName: _settings.get(defs.sendspinLocalPlayerName),
+      );
+      if (holds == null) {
+        log.warn(name, 'no group read for ${source.value}');
+        return;
+      }
+      if (holds) kept = source.value;
+    }
+    if (kept == _settings.get(defs.sendspinKeptFor)) return;
+    if (kept.isNotEmpty) {
+      log.info(name, 'this device is in $kept: the player stays on');
+    }
+    await _settings.set(defs.sendspinKeptFor, kept);
+  }
+
   /// Keep the pick of the source: a source switched back to this device
   /// drops the pick, a source switched to another system drops a pick
   /// that belongs elsewhere.
@@ -2260,8 +2402,8 @@ class SendspinManager extends Manager {
   /// Music Assistant's players, for the picker. This device's own player
   /// has no business in the list: "This device" already is that choice,
   /// and picking it remotely would take offline the very player being
-  /// followed. Music Assistant knows it by the Sendspin client id — bare,
-  /// or embedded in a wrapper's id (universal players prefix it).
+  /// followed. Music Assistant knows it by the Sendspin client id, bare or
+  /// behind a universal player: [MusicAssistantApi.standsFor].
   Future<List<Map<String, Object?>>> _maPlayers() async {
     final result = await _api().call('players/all');
     if (!result.ok) throw StateError(result.error ?? 'no answer');
@@ -2269,11 +2411,7 @@ class SendspinManager extends Manager {
     return ((result.result as List?) ?? const [])
         .whereType<Map>()
         .where((p) => p['enabled'] != false)
-        .where(
-          (p) =>
-              selfId.isEmpty ||
-              !'${p['player_id']}'.toLowerCase().contains(selfId.toLowerCase()),
-        )
+        .where((p) => !MusicAssistantApi.standsFor(p, selfId))
         .map(
           (p) => <String, Object?>{
             'id': 'ma:${p['player_id'] ?? ''}',
@@ -2451,6 +2589,13 @@ class SendspinManager extends Manager {
       ),
     };
     _remote = remote;
+    // A group edited in Music Assistant may take this device in or out.
+    if (remote is MaRemotePlayer) {
+      remote.members.addListener(() {
+        if (!identical(_remote, remote)) return;
+        _transition = _transition.then((_) => _syncLocal());
+      });
+    }
     _remoteDucker = VolumeDucker(
       capture: () async {
         final snapshot = _remoteVolumeSnapshot;

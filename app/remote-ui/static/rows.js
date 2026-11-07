@@ -121,34 +121,49 @@ export function syncGatedRows(key, anchorRow) {
   // it reaches live: only a row whose presence must change counts.
   const changes = (o) => visible(o) !== !!document.querySelector(`[data-key="${o.key}"]`);
   if (!reached.some(changes)) return true;
+  // A row in another card of the same page (Answer with camera on, in
+  // Answer, gated on Video calls in Video) is placed there: nothing needs
+  // a heading. Any row of that card shows where it is. Rows on second-level
+  // pages stay with syncSubpages below, which owns those pages.
+  const shownCard = (o) => all
+    .filter((x) => x.key !== o.key && x.category === o.category
+      && (x.section || '') === (o.section || '')
+      && (x.subpage || '') === (o.subpage || ''))
+    .map((x) => document.querySelector(`[data-key="${x.key}"]`)?.parentNode)
+    .find(Boolean);
+  const placeable = (o) => sameCard(o)
+    || (!o.subpage && !anchor.subpage && !!shownCard(o));
   // Rows on second-level pages of the tab this row is on (the Player pick
   // swapping the Sendspin Player page for the AirPlay one) come and go with
   // their pages, drawn in place too.
-  const away = reached.filter((o) => !sameCard(o) && changes(o));
+  const away = reached.filter((o) => !placeable(o) && changes(o));
   if (away.length && (anchor.subpage || !away.every((o) => o.subpage)
       || !syncSubpages(away))) {
     return false;
   }
   // Schema order within the card decides where a returning row goes back:
   // in front of the first row after it that is currently on screen.
-  const order = all.filter(sameCard);
-  for (const o of reached.filter(sameCard)) {
-    const existing = card.querySelector(`[data-key="${o.key}"]`);
+  for (const o of reached.filter(placeable)) {
+    const home = sameCard(o) ? card : shownCard(o);
+    const order = all.filter((x) => x.category === o.category
+      && (x.section || '') === (o.section || '')
+      && (x.subpage || '') === (o.subpage || ''));
+    const existing = home.querySelector(`[data-key="${o.key}"]`);
     if (!visible(o)) { existing?.remove(); continue; }
     if (existing) continue;
     let before = null;
     for (let i = order.indexOf(o) + 1; i < order.length && !before; i++) {
-      before = card.querySelector(`[data-key="${order[i].key}"]`);
+      before = home.querySelector(`[data-key="${order[i].key}"]`);
     }
     // Custom controls can follow the schema rows, as in Voice Satellite's
     // General section. Keep a revealed child beside its preceding setting.
     if (!before) {
       for (let i = order.indexOf(o) - 1; i >= 0; i--) {
-        const previous = card.querySelector(`[data-key="${order[i].key}"]`);
+        const previous = home.querySelector(`[data-key="${order[i].key}"]`);
         if (previous) { before = previous.nextSibling; break; }
       }
     }
-    card.insertBefore(settingRow(o), before);
+    home.insertBefore(settingRow(o), before);
   }
   return true;
 }
@@ -1172,13 +1187,17 @@ export function settingRow(s) {
   // editor: one summary row per widget - its type and corner - plus an add
   // button, with every setting edited in a labeled modal, the same shape as
   // the device's dialog. One widget per corner. The type and corner labels
-  // are kept word-for-word with screensaver_widgets.dart.
+  // are kept word-for-word with screensaver_widgets.dart. Enable screensaver
+  // widgets heads the card, so this setting's own row stays out of sight as
+  // the place the list hangs from, and the list's first row carries its key
+  // for search to land on.
   if (s.key === 'screensaver.widgets') {
     let entries = [];
     try { entries = JSON.parse(s.value || '[]') || []; } catch (_) { entries = []; }
     const CORNERS = [['top_left', screensaverText('Top left')], ['top_right', screensaverText('Top right')],
       ['bottom_left', screensaverText('Bottom left')], ['bottom_right', screensaverText('Bottom right')]];
     const TYPES = [['clock', screensaverText('Small clock')], ['weather', screensaverText('Weather')],
+      ['forecast', screensaverText('Weather forecast')],
       ['battery', screensaverText('Battery')], ['entity', screensaverText('Entity')],
       ['alarm', t('alarmsNextWidget')], ['calendar', t('calendarUpNext')]];
     const DEFAULTS = {
@@ -1188,7 +1207,10 @@ export function settingRow(s) {
         scale: 0, font: 'default', font_weight: 'default',
         feels_like: false, feels_like_only: false, location: true,
         forecast: true, high_low: true, humidity: true, wind: true,
-        visibility: true },
+        visibility: true, colored_icons: true },
+      forecast: { entity: '', name: '', color: '250,250,250', scale: 0,
+        font: 'default', font_weight: 'default', days: 5, today: true,
+        colored_icons: true },
       battery: { color: '250,250,250', scale: 0, font: 'default',
         font_weight: 'default', percent: true, low: false },
       entity: { entity: '', name: '', label: '', attribute: '', show_states: '',
@@ -1197,7 +1219,7 @@ export function settingRow(s) {
       alarm: { color: '250,250,250', scale: 0, font: 'default',
         font_weight: 'default' },
       calendar: { color: '250,250,250', scale: 0, font: 'default',
-        font_weight: 'default', count: 3, days: 1 },
+        font_weight: 'default', count: 3, days: 1, all_day: true, dots: false },
     };
     // The typeface and weight pickers, the clock screensaver's vocabulary
     // (kept with definitions.dart) behind a Default that follows the
@@ -1229,6 +1251,8 @@ export function settingRow(s) {
     // Real siblings, not a wrapper: the card's dividers are drawn between
     // adjacent .row elements (see the schedule editor above).
     const frag = document.createDocumentFragment();
+    row.style.display = 'none';
+    delete row.dataset.key;
     frag.appendChild(row);
     let entryRows = [];
 
@@ -1358,7 +1382,9 @@ export function settingRow(s) {
             refs.weight.wrap, refs.percent.wrap, refs.low.wrap);
           return;
         }
-        // Up next: how many coming events it lists and how many days ahead.
+        // Up next: how many coming events it lists, how many days ahead,
+        // whether all-day events count and whether the pictures give way to
+        // the colored dots.
         if (type === 'calendar') {
           const count = document.createElement('select');
           count.className = 'field';
@@ -1395,8 +1421,54 @@ export function settingRow(s) {
           daysLabel.className = 'desc';
           daysLabel.textContent = t('calendarWidgetDays');
           daysField.append(daysLabel, days);
+          refs.allDay = cameraToggle(t('calendarWidgetAllDay'), config.all_day !== false);
+          refs.dots = cameraToggle(t('calendarWidgetDots'), config.dots === true,
+            t('calendarWidgetDotsHint'));
           typeBlock.append(refs.color.wrap, refs.scale.wrap, refs.font.wrap,
-            refs.weight.wrap, countField, daysField);
+            refs.weight.wrap, countField, daysField, refs.allDay.wrap, refs.dots.wrap);
+          return;
+        }
+        // Weather forecast: the Weather widget's entity picker, then how
+        // many days it lists (the device's forecastDayOptions) and whether
+        // the list starts with today.
+        if (type === 'forecast') {
+          const spec = entitySpec({ domains: ['weather'] });
+          const field = pickField({
+            spec, value: config.entity || '',
+            onClick: async () => {
+              const out = await pickItem({ title: screensaverText('Weather entity'), spec,
+                selected: config.entity || null });
+              if (!out?.id) return;
+              config.entity = out.id;
+              config.name = cachedList(spec.key)?.items.find((i) => i.id === out.id)?.name || out.id;
+              field.setValue(out.id);
+            },
+          });
+          refs.entity = { wrap: formField(screensaverText('Weather entity'), field.el) };
+          const days = document.createElement('select');
+          days.className = 'field';
+          const picked = [3, 5, 7].includes(Number(config.days)) ? Number(config.days) : 5;
+          for (const n of [3, 5, 7]) {
+            const opt = document.createElement('option');
+            opt.value = String(n);
+            opt.textContent = String(n);
+            opt.selected = n === picked;
+            days.appendChild(opt);
+          }
+          refs.days = days;
+          const daysField = document.createElement('label');
+          daysField.className = 'form-field';
+          const daysLabel = document.createElement('span');
+          daysLabel.className = 'desc';
+          daysLabel.textContent = screensaverText('Days shown');
+          daysField.append(daysLabel, days);
+          refs.today = cameraToggle(screensaverText('Include today'),
+            config.today !== false, screensaverText("Start the list with today's forecast."));
+          refs.colored = cameraToggle(screensaverText('Colored icons'),
+            config.colored_icons !== false, screensaverText('Show the weather icons in their own colors.'));
+          typeBlock.append(refs.entity.wrap, refs.color.wrap, refs.scale.wrap,
+            refs.font.wrap, refs.weight.wrap, daysField, refs.today.wrap,
+            refs.colored.wrap);
           return;
         }
         // The next alarm: nothing of its own, the look every widget has.
@@ -1540,11 +1612,13 @@ export function settingRow(s) {
         refs.humidity = cameraToggle(screensaverText('Humidity'), config.humidity === true);
         refs.wind = cameraToggle(screensaverText('Wind speed'), config.wind === true);
         refs.visibility = cameraToggle(screensaverText('Visibility'), config.visibility === true);
+        refs.colored = cameraToggle(screensaverText('Colored icons'),
+          config.colored_icons !== false, screensaverText('Show the weather icons in their own colors.'));
         typeBlock.append(refs.entity.wrap, refs.label.wrap, refs.color.wrap,
           refs.scale.wrap, refs.font.wrap, refs.weight.wrap,
           refs.location.wrap, refs.feelsLike.wrap, refs.feelsLikeOnly.wrap,
           refs.forecast.wrap, refs.highLow.wrap, refs.humidity.wrap,
-          refs.wind.wrap, refs.visibility.wrap);
+          refs.wind.wrap, refs.visibility.wrap, refs.colored.wrap);
       };
       renderTypeBlock();
       typeSel.select.addEventListener('change', () => {
@@ -1578,12 +1652,21 @@ export function settingRow(s) {
             entryConfig = { color, scale, font, font_weight,
               percent: refs.percent.input.checked,
               low: refs.low.input.checked };
+          } else if (type === 'forecast') {
+            if (!config.entity) return { ok: false, error: screensaverText('Pick a weather entity.') };
+            entryConfig = { entity: config.entity,
+              name: config.name || config.entity, color, scale, font,
+              font_weight, days: Number(refs.days.value) || 5,
+              today: refs.today.input.checked,
+              colored_icons: refs.colored.input.checked };
           } else if (type === 'alarm') {
             entryConfig = { color, scale, font, font_weight };
           } else if (type === 'calendar') {
             entryConfig = { color, scale, font, font_weight,
               count: Number(refs.count?.value) || 3,
-              days: Number(refs.days?.value) || 1 };
+              days: Number(refs.days?.value) || 1,
+              all_day: refs.allDay.input.checked,
+              dots: refs.dots.input.checked };
           } else if (type === 'entity') {
             if (!config.entity) return { ok: false, error: screensaverText('Pick an entity.') };
             entryConfig = { entity: config.entity,
@@ -1609,9 +1692,11 @@ export function settingRow(s) {
               high_low: refs.highLow.input.checked,
               humidity: refs.humidity.input.checked,
               wind: refs.wind.input.checked,
-              visibility: refs.visibility.input.checked };
+              visibility: refs.visibility.input.checked,
+              colored_icons: refs.colored.input.checked };
           }
           const entry = { position, type, config: entryConfig };
+          if (existing?.enabled === false) entry.enabled = false;
           // The corner list only offers free corners, but drop any claimant
           // anyway so a stale modal cannot double-book one.
           entries = [...others.filter((o) => o.position !== position), entry];
@@ -1621,16 +1706,38 @@ export function settingRow(s) {
       });
     };
 
+    // The widget's own switch, beside Delete. Its click stays in the
+    // actions, so flipping it does not open the editor.
+    const entrySwitch = (e) => {
+      const toggle = document.createElement('label');
+      toggle.className = 'switch';
+      toggle.title = screensaverText('Show this widget');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = e.enabled !== false;
+      input.setAttribute('aria-label', toggle.title);
+      input.addEventListener('change', () => {
+        if (input.checked) delete e.enabled;
+        else e.enabled = false;
+        persist();
+      });
+      const slider = document.createElement('span');
+      slider.className = 'slider';
+      toggle.append(input, slider);
+      return toggle;
+    };
+
     const entryRow = (e) => cameraListRow(
       typeLabel(e.type), cornerLabel(e.position),
       [
+        entrySwitch(e),
         cameraAction(screensaverText('Delete'), () => {
           entries = entries.filter((o) => o !== e);
           persist();
         }, false, 'delete'),
       ],
       {
-        icon: ['weather', 'battery', 'entity', 'alarm', 'calendar'].includes(e.type)
+        icon: ['weather', 'forecast', 'battery', 'entity', 'alarm', 'calendar'].includes(e.type)
           ? e.type : 'clock',
         onClick: () => editWidget(e),
       },
@@ -1647,6 +1754,7 @@ export function settingRow(s) {
     const repaint = () => {
       const parent = row.parentNode;
       const fresh = [...entries.map(entryRow), addRow()];
+      fresh[0].dataset.key = s.key;
       if (!parent) {
         entryRows.forEach((el) => el.remove());
         fresh.forEach((el) => frag.appendChild(el));
@@ -1850,7 +1958,9 @@ export function settingRow(s) {
 
   // A time of day is picked, not typed: the control box shows the value
   // and opens the time picker dialog, the same one the device draws.
-  if (s.key === 'ha.theme_dark_at' || s.key === 'ha.theme_light_at') {
+  if (s.key === 'ha.theme_dark_at' || s.key === 'ha.theme_light_at'
+    || s.key === 'android_update.window_start'
+    || s.key === 'android_update.window_end') {
     const box = timeBox({ title: s.title, value: s.value || '', onPick: v => save(v) });
     row.appendChild(box.el);
     bindUpdate(box.el, () => box.set(s.value));

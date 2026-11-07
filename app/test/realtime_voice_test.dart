@@ -1107,6 +1107,46 @@ void main() {
       await backend.close();
     });
 
+    test(
+      'speech comes with its place in the audio, no words are logged',
+      () async {
+        final lines = <String>[];
+        socket = _Socket();
+        events = [];
+        final backend = OpenAiRealtimeBackend(
+          config: const RealtimeConfig(provider: RealtimeProvider.openai),
+          toolbox: _Tools(),
+          log: lines.add,
+          connector: (_, _) async => socket,
+        );
+        backend.events.listen(events.add);
+        await backend.start(const RealtimeStart());
+        socket
+          ..server({'type': 'session.updated'})
+          ..server({
+            'type': 'input_audio_buffer.speech_started',
+            'audio_start_ms': 4120,
+            'item_id': 'u1',
+          })
+          ..server({
+            'type': 'input_audio_buffer.speech_stopped',
+            'audio_end_ms': 4980,
+            'item_id': 'u1',
+          })
+          ..server({
+            'type': 'conversation.item.input_audio_transcription.completed',
+            'item_id': 'u1',
+            'transcript': ' ',
+          });
+        await pumpEventQueue();
+        expect(events.whereType<RealtimeSpeechStarted>().single.audioMs, 4120);
+        expect(events.whereType<RealtimeSpeechStopped>().single.audioMs, 4980);
+        expect(events.whereType<RealtimeUserText>(), isEmpty);
+        expect(lines, contains('heard no words in that speech'));
+        await backend.close();
+      },
+    );
+
     test('failures with no handling of their own are logged', () async {
       final lines = <String>[];
       socket = _Socket();
@@ -1301,13 +1341,72 @@ void main() {
       backend.interrupted('a1', 800);
       expect(socket.types, contains('response.cancel'));
       backend.userTurn(keep: true);
-      // Any answer still open on the server goes first.
-      expect(socket.types.skip(socket.types.length - 2), [
-        'response.cancel',
-        'response.create',
-      ]);
+      // OpenAI refuses a reply while the cancelled answer is still open.
+      expect(socket.types.where((t) => t == 'response.cancel'), hasLength(1));
+      expect(socket.types, isNot(contains('response.create')));
+      socket.server({
+        'type': 'response.done',
+        'response': {'status': 'cancelled'},
+      });
+      await pumpEventQueue();
+      expect(socket.sent.last, {
+        'type': 'response.create',
+        'event_id': 'turn_1',
+      });
       await backend.close();
     });
+
+    test('OpenAI: a turn with no answer open gets its reply at once', () async {
+      final backend = make(
+        const RealtimeConfig(provider: RealtimeProvider.openai),
+      );
+      await backend.start(const RealtimeStart());
+      socket.server({'type': 'session.updated'});
+      await pumpEventQueue();
+      backend.userTurn(keep: true);
+      expect(socket.types, isNot(contains('response.cancel')));
+      expect(socket.types.last, 'response.create');
+      await backend.close();
+    });
+
+    test(
+      'OpenAI: a refused reply is asked again once the answer is done',
+      () async {
+        final backend = make(
+          const RealtimeConfig(provider: RealtimeProvider.openai),
+        );
+        await backend.start(const RealtimeStart());
+        socket.server({'type': 'session.updated'});
+        await pumpEventQueue();
+        // An answer the kiosk has not heard of yet is open on the server.
+        backend.userTurn(keep: true);
+        socket.server({
+          'type': 'error',
+          'error': {
+            'code': 'conversation_already_has_active_response',
+            'message':
+                'Conversation already has an active response in progress',
+            'event_id': 'turn_1',
+          },
+        });
+        await pumpEventQueue();
+        expect(events.whereType<RealtimeWarning>(), isEmpty);
+        final asked = socket.types.where((t) => t == 'response.create').length;
+        socket
+          ..server({'type': 'response.created'})
+          ..server({
+            'type': 'response.done',
+            'response': {'status': 'completed'},
+          });
+        await pumpEventQueue();
+        expect(
+          socket.types.where((t) => t == 'response.create'),
+          hasLength(asked + 1),
+        );
+        expect(socket.sent.last['event_id'], 'turn_2');
+        await backend.close();
+      },
+    );
 
     test('an error before the session is up closes it', () async {
       final backend = make(
@@ -1875,6 +1974,18 @@ void main() {
         'y',
       ]);
     });
+
+    test('a conversation\'s last words nothing answered are dropped', () {
+      final history = RealtimeHistory()
+        ..add(user: true, text: 'What time is it?')
+        ..add(user: false, text: 'It is 11:28.')
+        ..add(user: true, text: 'Okay, bye.')
+        ..dropUnanswered();
+      expect(history.recent(const Duration(hours: 1)).map((t) => t.text), [
+        'What time is it?',
+        'It is 11:28.',
+      ]);
+    });
   });
 
   test('the location line names the device, not the assistant', () {
@@ -2013,6 +2124,29 @@ void main() {
         time.flushMicrotasks();
       });
     });
+
+    test(
+      'the wake chime plays and the pre-roll never reaches the provider',
+      () {
+        fakeAsync((time) {
+          final h = _Harness(time);
+          unawaited(h.session.wake('Hey Jarvis'));
+          time.flushMicrotasks();
+          expect(h.chimes.chimes, ['wake']);
+          // What the wake word engine held from before the stream opened.
+          h.mic.speak(preRoll: true);
+          time.elapse(const Duration(milliseconds: 600));
+          h.mic.speak(preRoll: true);
+          h.backend.emit(const RealtimeReady());
+          time.flushMicrotasks();
+          expect(h.backend.audio, isEmpty);
+          h.mic.speak();
+          expect(h.backend.audio, hasLength(1));
+          h.session.cancel();
+          time.flushMicrotasks();
+        });
+      },
+    );
 
     test('an opening is said first, after the announcement chime', () {
       fakeAsync((time) {
@@ -2365,6 +2499,119 @@ void main() {
           h.backend.emit(const RealtimeSpeechStarted());
           time.flushMicrotasks();
           expect(h.player.flushes, 1);
+          h.session.cancel();
+          time.flushMicrotasks();
+        });
+      });
+
+      /// The audio sent to the provider so far, in ms at 24 kHz.
+      int sentMs(_Harness h) =>
+          h.backend.audio.fold<int>(0, (n, pcm) => n + pcm.length ~/ 2) *
+          1000 ~/
+          24000;
+
+      /// A second of the room, then an answer that plays out and is done.
+      /// Where it ended in the audio sent.
+      int playOut(FakeAsync time, _Harness h) {
+        h.backend.clientTurns = true;
+        h.wakeAndConnect();
+        for (var i = 0; i < 12; i++) {
+          time.elapse(const Duration(milliseconds: 80));
+          h.mic.speak(value: 40);
+        }
+        h.answer('a1');
+        h.backend.emit(const RealtimeResponseDone());
+        time.flushMicrotasks();
+        h.player.frames = 24000;
+        time.elapse(const Duration(milliseconds: 100));
+        return sentMs(h);
+      }
+
+      /// The provider hears speech placed at [audioMs] and its end, with
+      /// the microphone at [level] in between.
+      void speech(FakeAsync time, _Harness h, int? audioMs, int level) {
+        h.backend.emit(RealtimeSpeechStarted(audioMs: audioMs));
+        time.flushMicrotasks();
+        for (var i = 0; i < 5; i++) {
+          time.elapse(const Duration(milliseconds: 80));
+          h.mic.speak(value: level);
+        }
+        h.backend.emit(const RealtimeSpeechStopped());
+        time.flushMicrotasks();
+      }
+
+      test('the echo right after an answer gets no reply', () {
+        fakeAsync((time) {
+          final h = _Harness(time);
+          final end = playOut(time, h);
+          expect(end, greaterThan(0));
+          speech(time, h, end + 200, 300);
+          expect(h.backend.turns, [false]);
+          expect(h.backend.interruptions, isEmpty);
+          expect(h.player.flushes, 0);
+          expect(
+            h.traces,
+            contains(startsWith('speech right after the answer: ')),
+          );
+          h.session.cancel();
+          time.flushMicrotasks();
+        });
+      });
+
+      test(
+        'speech placed under the answer and told after it gets no reply',
+        () {
+          fakeAsync((time) {
+            final h = _Harness(time);
+            final end = playOut(time, h);
+            speech(time, h, end - 300, 300);
+            expect(h.backend.turns, [false]);
+            h.session.cancel();
+            time.flushMicrotasks();
+          });
+        },
+      );
+
+      test('without a place, speech told in the echo tail is weighed', () {
+        fakeAsync((time) {
+          final h = _Harness(time);
+          playOut(time, h);
+          speech(time, h, null, 300);
+          expect(h.backend.turns, [false]);
+          h.session.cancel();
+          time.flushMicrotasks();
+        });
+      });
+
+      test('loud speech right after an answer is the user, nothing cut', () {
+        fakeAsync((time) {
+          final h = _Harness(time);
+          final end = playOut(time, h);
+          speech(time, h, end + 200, 3000);
+          expect(h.backend.turns, [true]);
+          expect(h.backend.interruptions, isEmpty);
+          expect(h.player.flushes, 0);
+          expect(
+            h.traces,
+            contains(startsWith('spoke right after the answer: ')),
+          );
+          expect(h.traces, isNot(contains(startsWith('interrupted after'))));
+          h.session.cancel();
+          time.flushMicrotasks();
+        });
+      });
+
+      test('speech past the echo tail is the user, however quiet', () {
+        fakeAsync((time) {
+          final h = _Harness(time);
+          final end = playOut(time, h);
+          speech(
+            time,
+            h,
+            end + RealtimeSession.echoTail.inMilliseconds + 200,
+            300,
+          );
+          expect(h.backend.turns, [true]);
           h.session.cancel();
           time.flushMicrotasks();
         });
@@ -2732,6 +2979,24 @@ void main() {
         h.player.frames = 24000;
         time.elapse(const Duration(seconds: 1));
         expect(h.session.busy, isFalse);
+      });
+    });
+
+    test('a goodbye ended on without a word is not replayed', () {
+      fakeAsync((time) {
+        final h = _Harness(time);
+        h.wakeAndConnect();
+        h.backend
+          ..emit(const RealtimeUserText('What time is it?'))
+          ..emit(const RealtimeAnswerText('It is 11:28.', complete: true))
+          ..emit(const RealtimeUserText('Okay, bye.'))
+          ..emit(const RealtimeEndRequested());
+        time.elapse(const Duration(seconds: 1));
+        expect(h.session.busy, isFalse);
+        expect(
+          h.session.history.recent(const Duration(hours: 1)).map((t) => t.text),
+          ['What time is it?', 'It is 11:28.'],
+        );
       });
     });
 

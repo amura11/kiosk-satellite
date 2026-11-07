@@ -15,6 +15,7 @@ import '../../managers/settings/definitions.dart' as defs;
 import '../../managers/voice/assist_view.dart';
 import '../../managers/voice/voice_manager.dart';
 import '../../managers/voice/voice_notice.dart';
+import '../text_snapshot.dart';
 import '../theme.dart';
 import '../toast.dart';
 import 'art_hal.dart';
@@ -655,14 +656,15 @@ class _AssistOverlayState extends State<AssistOverlay>
   ) {
     final settings = c.settings;
     final scaler = MediaQuery.textScalerOf(context);
-    double line(double size) => scaler.scale(size * scale) * skin.lineHeight;
+    double line(double size) => scaler.scale(size) * skin.lineHeight;
+    final lineScale = secondaryTextScale(scale);
     final command = settings.get(defs.voiceShowCommand);
     final answer = settings.get(defs.voiceShowAnswer);
     var chat = 0.0;
-    if (command) chat += line(skin.userSize) + 8 + skin.gap;
-    if (answer) chat += 3 * line(skin.answerSize) + 8;
+    if (command) chat += line(skin.userSize * lineScale) + 8 + skin.gap;
+    if (answer) chat += 3 * line(skin.answerSize * scale) + 8;
     if (!command && !answer && settings.get(defs.voiceShowTools)) {
-      chat += line(skin.toolSize) + 8;
+      chat += line(skin.toolSize * lineScale) + 8;
     }
     if (chat > 0) {
       chat += reactive ? skin.chatBottomReactive : skin.chatBottom;
@@ -709,8 +711,9 @@ class _AssistOverlayState extends State<AssistOverlay>
           _ => Theme.of(context).brightness == Brightness.dark,
         };
     final palette = skin.palette(dark);
-    final scale =
-        settings.get(defs.voiceTextScale).toDouble() / 100 * dockedTextScale;
+    final textScale = settings.get(defs.voiceTextScale).toDouble() / 100;
+    final scale = textScale * dockedTextScale;
+    final lineScale = secondaryTextScale(textScale) * dockedTextScale;
     final mode = switch (view.phase) {
       AssistPhase.thinking => ArtMode.thinking,
       AssistPhase.speaking || AssistPhase.announcement => ArtMode.speaking,
@@ -740,34 +743,40 @@ class _AssistOverlayState extends State<AssistOverlay>
     final lines = <Widget>[
       // The bubble says it hears before anything is said.
       if (!said && !thinking && view.phase == AssistPhase.listening)
-        Text(
-          voiceText(context, 'Listening…'),
-          style: _text(
-            skin,
-            palette.user,
-            skin.userSize * scale,
-            skin.userWeight,
-            palette.userShadows,
+        _shadowSnapshot(
+          Text(
+            voiceText(context, 'Listening…'),
+            style: _text(
+              skin,
+              palette.user,
+              skin.userSize * lineScale,
+              skin.userWeight,
+              palette.userShadows,
+            ),
           ),
         ),
+      // A realtime transcript arrives as it is spoken, so it wraps: one line
+      // would hide the words coming in.
       if (showCommand && view.command.isNotEmpty)
-        Text(
-          '${skin.prefix}${view.command}',
-          style: _text(
-            skin,
-            palette.user,
-            skin.userSize * scale,
-            skin.userWeight,
-            palette.userShadows,
+        _shadowSnapshot(
+          Text(
+            _commandText(skin, view.command),
+            style: _text(
+              skin,
+              palette.user,
+              skin.userSize * lineScale,
+              skin.userWeight,
+              palette.userShadows,
+            ),
           ),
         ),
-      for (final tool in tools) _toolLine(skin, palette, scale, tool),
+      for (final tool in tools) _toolLine(skin, palette, lineScale, tool),
       if (thinking && tools.isEmpty)
         ThinkingDots(
           skin: skin,
           colors: palette.dots,
           shadows: palette.toolShadows,
-          scale: scale,
+          scale: lineScale,
           clock: _clock,
         ),
       if (showAnswer && view.answer.isNotEmpty)
@@ -785,6 +794,7 @@ class _AssistOverlayState extends State<AssistOverlay>
             streaming: view.streaming,
             current: true,
             playback: () => null,
+            snapshot: true,
             style: _text(
               skin,
               palette.answer,
@@ -1121,6 +1131,11 @@ class _AssistOverlayState extends State<AssistOverlay>
     );
   }
 
+  /// The command as the chat shows it. A line break in a speech to text
+  /// result would take a whole line of the height the answer needs.
+  String _commandText(AssistSkin skin, String command) =>
+      '${skin.prefix}${command.trim().replaceAll(RegExp(r'\s+'), ' ')}';
+
   /// A line of chat text, as the skin's .vs-chat-msg rule draws it:
   /// line-height normal, the skin's font, weight and shadows.
   TextStyle _text(
@@ -1142,19 +1157,23 @@ class _AssistOverlayState extends State<AssistOverlay>
     shadows: shadows.isEmpty ? null : [for (final s in shadows) s.shadow],
   );
 
-  /// A message box: padding 4px 0, max-width of the chat's width.
+  /// A message box: padding 4px 0, max-width of the chat's width. A
+  /// [fullWidth] line has no second line to wrap to, so it takes all of it.
   Widget _msg(
     AssistSkin skin,
     double chatWidth,
     Widget child, {
     double padding = 4,
+    bool fullWidth = false,
     Key? key,
   }) => _FadeIn(
     key: key,
     dy: skin.fadeDy,
     ms: skin.fadeMs,
     child: ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: chatWidth * skin.msgMaxWidth),
+      constraints: BoxConstraints(
+        maxWidth: fullWidth ? chatWidth : chatWidth * skin.msgMaxWidth,
+      ),
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: padding),
         child: child,
@@ -1222,15 +1241,17 @@ class _AssistOverlayState extends State<AssistOverlay>
       Flexible(
         child: Padding(
           padding: const EdgeInsets.only(right: 2),
-          child: Text(
-            name,
-            style: _text(
-              skin,
-              palette.tool,
-              skin.toolSize * scale,
-              skin.toolWeight,
-              palette.toolShadows,
-              italic: skin.toolItalic,
+          child: _shadowSnapshot(
+            Text(
+              name,
+              style: _text(
+                skin,
+                palette.tool,
+                skin.toolSize * scale,
+                skin.toolWeight,
+                palette.toolShadows,
+                italic: skin.toolItalic,
+              ),
             ),
           ),
         ),
@@ -1265,10 +1286,11 @@ class _AssistOverlayState extends State<AssistOverlay>
       skin.answerWeight,
       palette.answerShadows,
     );
+    final lineScale = secondaryTextScale(scale);
     final userStyle = _text(
       skin,
       palette.user,
-      skin.userSize * scale,
+      skin.userSize * lineScale,
       skin.userWeight,
       palette.userShadows,
     );
@@ -1294,20 +1316,11 @@ class _AssistOverlayState extends State<AssistOverlay>
     double aboveAnswer(AssistTurn turn) {
       var height = 0.0;
       if (showCommand && turn.command.isNotEmpty) {
-        final painter = TextPainter(
-          text: TextSpan(
-            text: '${skin.prefix}${turn.command}',
-            style: userStyle,
-          ),
-          textAlign: textAlign,
-          textDirection: TextDirection.ltr,
-          textScaler: textScaler,
-        )..layout(maxWidth: chatWidth * skin.msgMaxWidth);
-        height += painter.height + 8 + skin.gap;
-        painter.dispose();
+        final line = textScaler.scale(skin.userSize * lineScale);
+        height += line * skin.lineHeight + 8 + skin.gap;
       }
       if (showTools) {
-        final line = textScaler.scale(skin.toolSize * scale) * 1.3;
+        final line = textScaler.scale(skin.toolSize * lineScale) * 1.3;
         height += turn.tools.length * (line + 8 + skin.gap);
       }
       return height;
@@ -1330,9 +1343,12 @@ class _AssistOverlayState extends State<AssistOverlay>
             skin,
             chatWidth,
             key: ValueKey('$n.user'),
+            fullWidth: true,
             Text(
-              '${skin.prefix}${turn.command}',
+              _commandText(skin, turn.command),
               textAlign: textAlign,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: userStyle,
             ),
           ),
@@ -1347,7 +1363,7 @@ class _AssistOverlayState extends State<AssistOverlay>
               opacity: dimmed ? 0.4 : 1,
               duration: const Duration(milliseconds: 400),
               curve: Curves.ease,
-              child: _toolLine(skin, palette, scale, tool),
+              child: _toolLine(skin, palette, lineScale, tool),
             ),
           ),
         if (current && view.phase == AssistPhase.thinking && tools.isEmpty)
@@ -1360,7 +1376,7 @@ class _AssistOverlayState extends State<AssistOverlay>
               skin: skin,
               colors: palette.dots,
               shadows: palette.toolShadows,
-              scale: scale,
+              scale: lineScale,
               clock: _clock,
             ),
           ),
@@ -1452,6 +1468,12 @@ class _AssistOverlayState extends State<AssistOverlay>
 /// The docked caption's text against the skin's full-screen sizes.
 const dockedTextScale = 0.55;
 
+/// The command and tool lines' size for a Text size of [scale]. Above 100%
+/// they grow at half the answer's rate, so a short screen keeps its height
+/// for the answer.
+double secondaryTextScale(double scale) =>
+    scale > 1 ? 1 + (scale - 1) / 2 : scale;
+
 /// A line's entry, as the skins animate new messages: opacity 0 to 1 while
 /// it rises [dy] px, over [ms] with CSS's ease.
 class _FadeIn extends StatelessWidget {
@@ -1487,6 +1509,7 @@ class _RevealText extends StatefulWidget {
     required this.playback,
     required this.style,
     required this.textAlign,
+    this.snapshot = false,
   });
 
   final String text;
@@ -1500,8 +1523,37 @@ class _RevealText extends StatefulWidget {
   final TextStyle style;
   final TextAlign textAlign;
 
+  /// A short answer, once all of it shows, is painted once with its
+  /// shadows ([_shadowSnapshot]). A long one would take an image taller
+  /// than some GPUs allow, so it stays live.
+  final bool snapshot;
+
+  /// The longest answer [snapshot] takes.
+  static const snapshotChars = 400;
+
   @override
   State<_RevealText> createState() => _RevealTextState();
+}
+
+/// [text] painted once into an image while its shadows blur. Impeller keeps
+/// no raster cache, so every blurred shadow on screen otherwise goes
+/// through offscreen passes again on every frame the bar or the art moves.
+/// Text without a blurred shadow stays as it is.
+Widget _shadowSnapshot(Text text) {
+  var bleed = 0.0;
+  for (final s in text.style?.shadows ?? const <Shadow>[]) {
+    if (s.blurRadius <= 0) continue;
+    // Three standard deviations hold all of a Gaussian that shows.
+    final sigma = 0.57735 * s.blurRadius + 0.5;
+    final offset = math.max(s.offset.dx.abs(), s.offset.dy.abs());
+    bleed = math.max(bleed, 3 * sigma + offset);
+  }
+  if (bleed == 0) return text;
+  return TextSnapshot(
+    content: (text.data, text.style, text.textAlign),
+    bleed: bleed.ceilToDouble(),
+    child: text,
+  );
 }
 
 /// Characters revealed a second.
@@ -1562,7 +1614,13 @@ class _RevealTextState extends State<_RevealText>
     final complete = count >= text.length && !widget.streaming;
     final shown = text.substring(0, count);
     final Widget child;
-    if (complete || shown.length <= _fadeLength) {
+    if (complete &&
+        widget.snapshot &&
+        text.length <= _RevealText.snapshotChars) {
+      child = _shadowSnapshot(
+        Text(shown, textAlign: widget.textAlign, style: widget.style),
+      );
+    } else if (complete || shown.length <= _fadeLength) {
       child = Text(shown, textAlign: widget.textAlign, style: widget.style);
     } else {
       final solid = shown.substring(0, shown.length - _fadeLength);

@@ -127,6 +127,12 @@ A plugin that uses Shizuku asks for its permission on each kiosk. Runtime chart 
 
 Using **Update the fleet** prioritizes installations on followers first, updating the leader last so it stays online to manage the process. If a kiosk has a pinned screen, it will prompt for the update directly on its display. **Keep followers on this version** automatically handles updates if a follower falls behind the leader's current release.
 
+## Restoring the Leader
+
+A configuration export from the leader carries the fleet: **Lead this fleet**, the profiles, the followers and the id the followers know the leader by. To move the leader to a new device or bring it back after a factory reset, import the export and pick **Replace "device name"**. The restored leader takes over the old one's id and its followers keep syncing without new invitations. Turn off or reset the old leader first, since two kiosks with the same id confuse the followers. **Set up as new device** leaves the fleet out, so a kiosk cloned from the leader's export does not take over its followers.
+
+Exports from older versions do not carry the leader's id. If the followers stop syncing after restoring one on a new or reset device, invite them again.
+
 ## Never Synced
 
 Certain settings remain unique to each kiosk regardless of the profile configuration. Followers will automatically drop these settings even if a leader attempts to send them.
@@ -137,11 +143,11 @@ Certain settings remain unique to each kiosk regardless of the profile configura
 | Shizuku | `shizuku.install_updates` |
 | Interface language | `ui.language` |
 | Remote admin & fleet | `remote.enabled`, `remote.port`, `remote.tls`, `remote.password`, `remote.fleet_discovery`, `remote.admin_url`, `fleet.*` |
-| Intercom encryption and hang up button | `intercom.tls`, `intercom.hangup_key`, `intercom.hangup_key_ringing` |
+| Intercom encryption, hang up button and camera on auto answer | `intercom.tls`, `intercom.hangup_key`, `intercom.hangup_key_ringing`, `intercom.auto_answer_camera` |
 | Alarms | `alarms.list`, `alarms.runtime` |
 | Calendar | `calendar.hidden` |
-| Hardware picks | `camera.device`, `camera.scan_screen_light`, `camera.rtsp.tls`, `camera.rtsp.resolution`, `camera.rtsp.analysis`, `motion.camera`, `audio.mic_device`, `audio.speaker_device`, `audio.mic_channel`, `audio.mic_capture_mode`, `audio.software_echo_cancellation`, `audio.mic_noise_suppression`, `audio.mic_gain_db`, `audio.mic_capture_format`, `render.disable_impeller`, `render.legacy_webview`, `ui.scale`, `screen.ambient_display` |
-| Followed player | `sendspin.player`, `sendspin.player_source`, `sendspin.player_name`, `sendspin.speaker_pill_players` |
+| Hardware picks | `camera.device`, `camera.scan_screen_light`, `camera.rtsp.tls`, `camera.rtsp.resolution`, `camera.rtsp.analysis`, `motion.camera`, `audio.mic_device`, `audio.speaker_device`, `audio.mic_channel`, `audio.mic_capture_mode`, `audio.software_echo_cancellation`, `audio.echo_cancellation_method`, `audio.mic_noise_suppression`, `audio.mic_gain_db`, `audio.mic_capture_format`, `render.disable_impeller`, `render.legacy_webview`, `render.hybrid_plugin_overlays`, `ui.scale`, `screen.ambient_display` |
+| Followed player | `sendspin.player`, `sendspin.player_source`, `sendspin.player_name`, `sendspin.handoff`, `sendspin.speaker_pill_players`, `sendspin.kept_for` |
 | Weather preview | `screensaver.weather_preview`, `screensaver.weather_preview_condition`, `screensaver.weather_preview_period` |
 | Celestial view and last GPS position | `screensaver.celestial_view`, `screensaver.celestial_last_gps` |
 | Voice Satellite chimes | `voice_chimes.wake`, `voice_chimes.done`, `voice_chimes.error`, `voice_chimes.alert`, `voice_chimes.announce` |

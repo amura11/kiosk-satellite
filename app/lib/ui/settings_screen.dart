@@ -1,4 +1,4 @@
-import 'alarms_overlay.dart' show AlarmsManageCard;
+import 'alarms_overlay.dart' show AlarmMusicSettingTile, AlarmsManageCard;
 import 'calendar_settings.dart';
 import '../l10n/fleet_messages.dart';
 import 'dart:async';
@@ -2654,7 +2654,9 @@ class _CategoryContentState extends State<_CategoryContent> {
               after: _rowExtras(container),
               before: {
                 if (widget.category == 'Screensaver')
-                  screensaverWidgets.key: ?_pluginScreensaverEntry(container),
+                  screensaverWidgetsEnabled.key: ?_pluginScreensaverEntry(
+                    container,
+                  ),
               },
             ),
           ),
@@ -3900,10 +3902,14 @@ class _CategoryContentState extends State<_CategoryContent> {
     }
 
     if (widget.category == 'Device' && subpage == 'Updates') {
+      // Kiosk Satellite's own update rows and cards first, then Android's
+      // system updates (issue #1292), which only a device owner sees.
+      bool android(SettingDef<Object> def) =>
+          def.section == androidUpdatePolicy.section;
       return [
         ...sectioned([
           for (final def in _defsFor(widget.category))
-            if (def.subpage == subpage) def,
+            if (def.subpage == subpage && !android(def)) def,
         ]),
         // An APK uploaded through the remote admin (issue #566): the
         // upload itself happens in a browser, the install can be started
@@ -3942,6 +3948,10 @@ class _CategoryContentState extends State<_CategoryContent> {
             ),
           ],
         ),
+        ...sectioned([
+          for (final def in _defsFor(widget.category))
+            if (def.subpage == subpage && android(def)) def,
+        ]),
       ];
     }
 
@@ -5974,6 +5984,7 @@ class _WidgetsEditorState extends State<_WidgetsEditor> {
   IconData _icon(String type) => switch (type) {
     'clock' => Icons.access_time,
     'weather' => Icons.cloud_outlined,
+    'forecast' => Icons.wb_sunny_outlined,
     'battery' => Icons.battery_full,
     'entity' => Icons.sensors,
     'alarm' => Icons.alarm,
@@ -5996,7 +6007,7 @@ class _WidgetsEditorState extends State<_WidgetsEditor> {
       context,
       'Hidden in the Camera Streams screensaver mode.',
     ),
-    'entity' || 'alarm' || 'calendar' => screensaverText(
+    'forecast' || 'entity' || 'alarm' || 'calendar' => screensaverText(
       context,
       'Hidden in the Camera Streams screensaver mode.',
     ),
@@ -6335,6 +6346,78 @@ class _WidgetsEditorState extends State<_WidgetsEditor> {
                         screensaverText(context, 'Visibility'),
                         'visibility',
                       ),
+                      // On unless switched off, like the forecast widget's.
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(screensaverText(context, 'Colored icons')),
+                        value: config['colored_icons'] != false,
+                        onChanged: (v) =>
+                            setDialogState(() => config['colored_icons'] = v),
+                      ),
+                    ],
+                    if (type == 'forecast') ...[
+                      // The Weather widget's entity keys and picker.
+                      LabeledField(
+                        label: screensaverText(context, 'Weather entity'),
+                        child: PickFieldBox(
+                          spec: entitySpec(
+                            context,
+                            widget.container.commands,
+                            domains: const ['weather'],
+                          ),
+                          value: weatherEntity,
+                          onTap: () async {
+                            final picked = await showEntityPicker(
+                              context,
+                              widget.container,
+                              title: screensaverText(context, 'Weather entity'),
+                              selected: weatherEntity,
+                              domains: const ['weather'],
+                            );
+                            final id = picked?.id;
+                            if (id == null) return;
+                            setDialogState(() {
+                              config['entity'] = id;
+                              config['name'] = _entityName(id);
+                            });
+                          },
+                        ),
+                      ),
+                      colorRow(),
+                      scaleRow(),
+                      fontRow(),
+                      fontWeightRow(),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(screensaverText(context, 'Days shown')),
+                        trailing: DropdownButton<int>(
+                          value: switch ((config['days'] as num?)?.toInt()) {
+                            final d? when forecastDayOptions.contains(d) => d,
+                            _ => 5,
+                          },
+                          items: [
+                            for (final d in forecastDayOptions)
+                              DropdownMenuItem(value: d, child: Text('$d')),
+                          ],
+                          onChanged: (d) =>
+                              setDialogState(() => config['days'] = d ?? 5),
+                        ),
+                      ),
+                      // On unless switched off, like Show AM/PM.
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(screensaverText(context, 'Include today')),
+                        value: config['today'] != false,
+                        onChanged: (v) =>
+                            setDialogState(() => config['today'] = v),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(screensaverText(context, 'Colored icons')),
+                        value: config['colored_icons'] != false,
+                        onChanged: (v) =>
+                            setDialogState(() => config['colored_icons'] = v),
+                      ),
                     ],
                     if (type == 'calendar') ...[
                       colorRow(),
@@ -6377,6 +6460,20 @@ class _WidgetsEditorState extends State<_WidgetsEditor> {
                           onChanged: (d) =>
                               setDialogState(() => config['days'] = d ?? 1),
                         ),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(l10n(context).calendarWidgetAllDay),
+                        value: config['all_day'] != false,
+                        onChanged: (v) =>
+                            setDialogState(() => config['all_day'] = v),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(l10n(context).calendarWidgetDots),
+                        value: config['dots'] == true,
+                        onChanged: (v) =>
+                            setDialogState(() => config['dots'] = v),
                       ),
                     ],
                     if (type == 'battery') ...[
@@ -6499,10 +6596,12 @@ class _WidgetsEditorState extends State<_WidgetsEditor> {
                 child: Text(screensaverText(context, 'Cancel')),
               ),
               FilledButton(
-                // A weather or entity widget without its entity has
-                // nothing to show.
+                // A weather, forecast or entity widget without its
+                // entity has nothing to show.
                 onPressed:
-                    (type == 'weather' || type == 'entity') &&
+                    (type == 'weather' ||
+                            type == 'forecast' ||
+                            type == 'entity') &&
                         weatherEntity.isEmpty
                     ? null
                     : () => Navigator.pop(context, true),
@@ -6527,7 +6626,12 @@ class _WidgetsEditorState extends State<_WidgetsEditor> {
       // anyway so a stale dialog cannot double-book one.
       for (final w in others)
         if (w.position != position) w,
-      ScreensaverWidget(position: position, type: type, config: config),
+      ScreensaverWidget(
+        position: position,
+        type: type,
+        config: config,
+        enabled: existing?.enabled ?? true,
+      ),
     ]);
   }
 
@@ -6551,12 +6655,34 @@ class _WidgetsEditorState extends State<_WidgetsEditor> {
             subtitle: Text(
               screensaverText(context, cornerLabels[w.position] ?? w.position),
             ),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: screensaverText(context, 'Remove widget'),
-              onPressed: () => _save(
-                [...widgets]..removeWhere((x) => x.position == w.position),
-              ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Tooltip(
+                  message: screensaverText(context, 'Show this widget'),
+                  child: Switch(
+                    value: w.enabled,
+                    onChanged: (on) => _save([
+                      for (final x in widgets)
+                        x.position == w.position
+                            ? ScreensaverWidget(
+                                position: x.position,
+                                type: x.type,
+                                config: x.config,
+                                enabled: on,
+                              )
+                            : x,
+                    ]),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: screensaverText(context, 'Remove widget'),
+                  onPressed: () => _save(
+                    [...widgets]..removeWhere((x) => x.position == w.position),
+                  ),
+                ),
+              ],
             ),
             onTap: () => _edit(context, w),
           ),
@@ -7534,7 +7660,12 @@ String? _offlineNotice(BuildContext context, AppContainer container) {
   final source = settings.get(sendspinPlayerSource);
   final local = source.isEmpty;
   final pick = settings.get(sendspinPlayer);
-  final sendspinOff = settings.get(sendspinEnabled) && !(local && pick.isEmpty);
+  // A followed group this device is in keeps the Sendspin player on.
+  final kept = settings.get(sendspinKeptFor);
+  final sendspinOff =
+      settings.get(sendspinEnabled) &&
+      !(local && pick.isEmpty) &&
+      !(kept.isNotEmpty && kept == pick);
   final airplayOff =
       settings.get(airplayEnabled) &&
       !(local && pick == SendspinManager.airplayPick);
@@ -11379,6 +11510,16 @@ class SettingTile extends StatelessWidget {
             ),
           );
         }
+        // Alarm music: the music picker behind a box, like the alarm's own.
+        if (def.key == alarmsMusic.key) {
+          return AlarmMusicSettingTile(
+            key: const ValueKey('alarms-music'),
+            container: c,
+            title: def.localizedTitle(context),
+            description: def.localizedDescription(context),
+            onChanged: onChanged,
+          );
+        }
         // The notification sound (issue #320): a dropdown over the sounds
         // folder, and a row to put a file of this device's into it. The
         // intercom's ring sound is picked from the same folder.
@@ -11670,7 +11811,10 @@ class SettingTile extends StatelessWidget {
         }
         // A time of day is picked, not typed: the control box shows the
         // value and opens the time picker, on both surfaces.
-        if (def.key == themeDarkAt.key || def.key == themeLightAt.key) {
+        if (def.key == themeDarkAt.key ||
+            def.key == themeLightAt.key ||
+            def.key == androidUpdateWindowStart.key ||
+            def.key == androidUpdateWindowEnd.key) {
           final current = value as String;
           return ListTile(
             title: Text(def.localizedTitle(context)),

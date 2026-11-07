@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
 
+import '../music_library/music_pick.dart';
+
 /// One alarm as `alarms.list` stores it. Times are local wall time; the
 /// ring moments are worked out against the device clock whenever they are
 /// needed, so a time zone or a DST change moves them with the wall.
@@ -18,6 +20,8 @@ class Alarm {
     this.ease,
     this.speak = false,
     this.phrase = '',
+    this.music,
+    this.noMusic = false,
   });
 
   final String id;
@@ -46,6 +50,18 @@ class Alarm {
   /// What to say; empty follows the Phrase default.
   final String phrase;
 
+  /// Music from the library to ring with instead of the tone, its own.
+  /// Null follows the Alarm music default unless [noMusic]. The tone
+  /// rings when the music cannot play.
+  final MusicPick? music;
+
+  /// Rings the tone, whatever the Alarm music default is.
+  final bool noMusic;
+
+  /// What it rings with: its own music, none, or the default [fallback].
+  MusicPick? musicWith(MusicPick? fallback) =>
+      noMusic ? null : music ?? fallback;
+
   bool get repeats => days.isNotEmpty;
 
   String get time =>
@@ -63,6 +79,8 @@ class Alarm {
     bool? Function()? ease,
     bool? speak,
     String? phrase,
+    MusicPick? Function()? music,
+    bool? noMusic,
   }) => Alarm(
     id: id,
     hour: hour ?? this.hour,
@@ -76,6 +94,8 @@ class Alarm {
     ease: ease != null ? ease() : this.ease,
     speak: speak ?? this.speak,
     phrase: phrase ?? this.phrase,
+    music: music != null ? music() : this.music,
+    noMusic: noMusic ?? this.noMusic,
   );
 
   Map<String, Object?> toJson() => {
@@ -90,6 +110,10 @@ class Alarm {
     if (ease != null) 'ease': ease,
     'speak': speak,
     'phrase': phrase,
+    if (noMusic)
+      'music': 'none'
+    else if (music != null)
+      'music': music!.toJson(),
   };
 
   /// Null for anything that is not an alarm, so one bad entry never takes
@@ -119,6 +143,8 @@ class Alarm {
       ease: raw['ease'] is bool ? raw['ease'] as bool : null,
       speak: raw['speak'] == true,
       phrase: '${raw['phrase'] ?? ''}'.trim(),
+      music: MusicPick.fromJson(raw['music']),
+      noMusic: raw['music'] == 'none',
     );
   }
 }
@@ -233,33 +259,65 @@ DateTime? lastRing(Alarm alarm, DateTime now) {
   return best;
 }
 
-/// [template] with {label}, {time} and {day} filled in: the words an alarm
-/// says between its rings. A blank label leaves no stray punctuation or
-/// spaces behind.
+/// The variables a phrase can use, as the phrase hint lists them.
+const alarmPhraseVariables =
+    '{label}, {name}, {time}, {hour}, {minute}, {date}, {day}, {dayofmonth}, '
+    '{month}, {year}';
+
+/// [template] with its variables filled in: the words an alarm says between
+/// its rings. A blank label or name leaves no stray punctuation or spaces
+/// behind.
 String fillAlarmPhrase(
   String template, {
   required String label,
+  required String name,
   required String time,
+  required String hour,
+  required String minute,
+  required String date,
   required String day,
+  required String dayOfMonth,
+  required String month,
+  required String year,
 }) {
-  var text = template.replaceAll('{time}', time).replaceAll('{day}', day);
-  label = label.trim();
-  if (label.isNotEmpty) return text.replaceAll('{label}', label).trim();
-  // No label: the gap goes with the weaker of the marks around it, so
-  // "Hi, {label}. It's 7" says "Hi. It's 7", and nothing else the phrase
-  // says is touched.
-  text = text.replaceAllMapped(
-    RegExp(r'([.,!?;:]?)\s*\{label\}\s*([.,!?;:]?)'),
-    (m) {
-      final before = m[1]!, after = m[2]!;
-      if (after.isNotEmpty) return after;
-      return before.isEmpty ? ' ' : '$before ';
-    },
-  );
+  final words = {
+    'label': label.trim(),
+    'name': name.trim(),
+    'time': time,
+    'hour': hour,
+    'minute': minute,
+    'date': date,
+    'day': day,
+    'dayofmonth': dayOfMonth,
+    'month': month,
+    'year': year,
+  };
+  final blanks = [
+    for (final key in const ['label', 'name'])
+      if (words[key]!.isEmpty) key,
+  ];
+  var text = template;
+  if (blanks.isNotEmpty) {
+    // The gap goes with the weaker of the marks around it, so
+    // "Hi, {label}. It's 7" says "Hi. It's 7", and nothing else the phrase
+    // says is touched.
+    text = text
+        .replaceAllMapped(
+          RegExp('([.,!?;:]?)\\s*\\{(?:${blanks.join('|')})\\}\\s*([.,!?;:]?)'),
+          (m) {
+            final before = m[1]!, after = m[2]!;
+            if (after.isNotEmpty) return after;
+            return before.isEmpty ? ' ' : '$before ';
+          },
+        )
+        .replaceAll(RegExp(r'\s{2,}'), ' ')
+        .trim()
+        .replaceFirst(RegExp(r'^[.,;:]\s*'), '');
+  }
+  // One pass, so a label that reads like a variable stays as it is.
   return text
-      .replaceAll(RegExp(r'\s{2,}'), ' ')
-      .trim()
-      .replaceFirst(RegExp(r'^[.,;:]\s*'), '');
+      .replaceAllMapped(RegExp(r'\{(\w+)\}'), (m) => words[m[1]] ?? m[0]!)
+      .trim();
 }
 
 /// Which days a repeat covers, in words: Every day, Weekdays, Weekends or

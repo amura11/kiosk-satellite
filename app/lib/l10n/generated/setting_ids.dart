@@ -76,6 +76,18 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "settingUpdateSourceUrlTitle",
     "description": "settingUpdateSourceUrlDescription",
   },
+  "android_update.policy": {
+    "title": "settingAndroidUpdatePolicyTitle",
+    "description": "settingAndroidUpdatePolicyDescription",
+  },
+  "android_update.window_start": {
+    "title": "settingAndroidUpdateWindowStartTitle",
+    "description": "settingAndroidUpdateWindowStartDescription",
+  },
+  "android_update.window_end": {
+    "title": "settingAndroidUpdateWindowEndTitle",
+    "description": "settingAndroidUpdateWindowEndDescription",
+  },
   "shizuku.install_updates": {
     "title": "settingShizukuInstallUpdatesTitle",
     "description": "settingShizukuInstallUpdatesDescription",
@@ -295,6 +307,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "audio.software_echo_cancellation": {
     "title": "settingMicSoftwareEchoCancellationTitle",
     "description": "settingMicSoftwareEchoCancellationDescription",
+  },
+  "audio.echo_cancellation_method": {
+    "title": "settingMicEchoCancellationMethodTitle",
+    "description": "settingMicEchoCancellationMethodDescription",
   },
   "audio.mic_noise_suppression": {
     "title": "settingMicNoiseSuppressionTitle",
@@ -522,7 +538,11 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "screensaver.media_interval_seconds": {
     "title": "settingScreensaverMediaIntervalTitle",
-    "description": "settingScreensaverMediaIntervalDescription",
+    "description": "settingScreensaverImageIntervalDescription",
+  },
+  "screensaver.media_video_length": {
+    "title": "settingScreensaverVideoLengthTitle",
+    "description": "settingScreensaverVideoLengthDescription",
   },
   "screensaver.media_shuffle": {
     "title": "settingScreensaverMediaShuffleTitle",
@@ -550,7 +570,11 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "screensaver.gallery_interval_seconds": {
     "title": "settingScreensaverGalleryIntervalTitle",
-    "description": "settingScreensaverGalleryIntervalDescription",
+    "description": "settingScreensaverPhotoIntervalDescription",
+  },
+  "screensaver.gallery_video_length": {
+    "title": "settingScreensaverVideoLengthTitle",
+    "description": "settingScreensaverVideoLengthDescription",
   },
   "screensaver.gallery_shuffle": {
     "title": "settingScreensaverGalleryShuffleTitle",
@@ -574,7 +598,11 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "screensaver.local_interval_seconds": {
     "title": "settingScreensaverLocalIntervalTitle",
-    "description": "settingScreensaverLocalIntervalDescription",
+    "description": "settingScreensaverPhotoIntervalDescription",
+  },
+  "screensaver.local_video_length": {
+    "title": "settingScreensaverVideoLengthTitle",
+    "description": "settingScreensaverVideoLengthDescription",
   },
   "screensaver.local_shuffle": {
     "title": "settingScreensaverLocalShuffleTitle",
@@ -614,7 +642,11 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "screensaver.immich_interval_seconds": {
     "title": "settingScreensaverImmichIntervalTitle",
-    "description": "settingScreensaverImmichIntervalDescription",
+    "description": "settingScreensaverImageIntervalDescription",
+  },
+  "screensaver.immich_video_length": {
+    "title": "settingScreensaverVideoLengthTitle",
+    "description": "settingScreensaverVideoLengthDescription",
   },
   "screensaver.immich_shuffle": {
     "title": "settingScreensaverImmichShuffleTitle",
@@ -667,6 +699,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "screensaver.immich_metadata_location": {
     "title": "settingScreensaverImmichMetadataLocationTitle",
     "description": "settingScreensaverImmichMetadataLocationDescription",
+  },
+  "screensaver.immich_metadata_description": {
+    "title": "settingScreensaverImmichMetadataDescriptionTitle",
+    "description": "settingScreensaverImmichMetadataDescriptionDescription",
   },
   "screensaver.immich_metadata_position": {
     "title": "settingScreensaverImmichMetadataPositionTitle",
@@ -727,6 +763,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "screensaver.camera_mute": {
     "title": "settingScreensaverCameraMuteTitle",
     "description": "settingScreensaverCameraMuteDescription",
+  },
+  "screensaver.widgets_enabled": {
+    "title": "settingScreensaverWidgetsEnabledTitle",
+    "description": "settingScreensaverWidgetsEnabledDescription",
   },
   "screensaver.widgets": {
     "title": "settingScreensaverWidgetsTitle",
@@ -1288,6 +1328,10 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "settingIntercomAnswerModeTitle",
     "description": "settingIntercomAnswerModeDescription",
   },
+  "intercom.auto_answer_camera": {
+    "title": "settingIntercomAutoAnswerCameraTitle",
+    "description": "settingIntercomAutoAnswerCameraDescription",
+  },
   "intercom.ring_seconds": {
     "title": "settingIntercomRingSecondsTitle",
     "description": "settingIntercomRingSecondsDescription",
@@ -1794,7 +1838,7 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "voice.seamless_wake": {
     "title": "settingVoiceSeamlessWakeTitle",
-    "description": "settingVoiceSeamlessWakeDescription",
+    "description": "settingVoiceSeamlessWakeAssistDescription",
   },
   "voice.followup_delay_ms": {
     "title": "settingVoiceFollowupDelayTitle",
@@ -1968,6 +2012,10 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "settingScreensaverWeatherAlarmTakeoverTitle",
     "description": "settingScreensaverWeatherAlarmTakeoverDescription",
   },
+  "alarms.clock_24h": {
+    "title": "settingScreensaverClock24hTitle",
+    "description": "settingScreensaverClock24hDescription",
+  },
   "alarms.volume": {
     "title": "settingAlarmsVolumeTitle",
     "description": "settingAlarmsVolumeDescription",
@@ -1983,6 +2031,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "alarms.tone": {
     "title": "settingAlarmsToneTitle",
     "description": "settingAlarmsToneDescription",
+  },
+  "alarms.music": {
+    "title": "settingAlarmsMusicTitle",
+    "description": "settingAlarmsMusicDescription",
   },
   "alarms.snooze_minutes": {
     "title": "settingAlarmsSnoozeMinutesTitle",
@@ -2364,13 +2416,25 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "settingCalendarDefaultViewTitle",
     "description": "settingCalendarDefaultViewDescription",
   },
+  "calendar.clock_24h": {
+    "title": "settingScreensaverClock24hTitle",
+    "description": "settingScreensaverClock24hDescription",
+  },
   "calendar.week_start": {
     "title": "settingCalendarWeekStartTitle",
-    "description": "settingCalendarWeekStartDescription",
+    "description": "settingCalendarWeekStartAppLanguageDescription",
   },
   "calendar.weather_entity": {
     "title": "settingCalendarWeatherEntityTitle",
     "description": "settingCalendarWeatherEntityDescription",
+  },
+  "calendar.allow_edit": {
+    "title": "settingCalendarAllowEditTitle",
+    "description": "settingCalendarAllowEditDescription",
+  },
+  "calendar.allow_delete": {
+    "title": "settingCalendarAllowDeleteTitle",
+    "description": "settingCalendarAllowDeleteDescription",
   },
   "calendar.menu": {
     "title": "settingShowInKioskMenuTitle",
@@ -2539,5 +2603,13 @@ const settingMessageIds = <String, Map<String, String>>{
   "library.text_scale": {
     "title": "settingSendspinFullscreenTextScaleTitle",
     "description": "settingLibraryTextScaleDescription",
+  },
+  "intercom.video": {
+    "title": "settingIntercomVideoTitle",
+    "description": "settingIntercomVideoDescription",
+  },
+  "intercom.video_quality": {
+    "title": "settingIntercomVideoQualityTitle",
+    "description": "settingIntercomVideoQualityDescription",
   },
 };
