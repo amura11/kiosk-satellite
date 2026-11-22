@@ -31,6 +31,12 @@ internal object BluetoothProxyRuntime {
         val scanDuty: String = ScanDuty.BALANCED.key,
         /** Use the filter list that keeps scanning with the screen off. */
         val screenOffScan: Boolean = false,
+        /** Report the API identity's MAC as the Bluetooth address too, the
+         *  way Home Assistant reads a proxy that sends none, instead of a
+         *  second unrelated one. Bermuda only links a scanner to its
+         *  ESPHome device when the two are within a few of each other
+         *  (issue #1442). Off keeps the address existing installs have. */
+        val deviceMacForBluetooth: Boolean = false,
         /** The ESPHome node name to answer as: the mDNS instance, the
          *  <name>.local host, and what Home Assistant builds this
          *  device's action names from. Empty keeps the generated
@@ -60,6 +66,11 @@ internal object BluetoothProxyRuntime {
             { _, _, _ -> },
         /** Serve the voice assistant: the kiosk becomes an Assist satellite. */
         val voice: Boolean = false,
+        /**
+         * Whether the satellite offers timers. Off, Home Assistant keeps its
+         * timer intents and LLM timer tools away from this kiosk.
+         */
+        val timers: Boolean = true,
         /**
          * Where voice messages from Home Assistant land: a kind ("subscribed",
          * "response", "event", "timer", "announce", "setConfiguration") and
@@ -132,7 +143,8 @@ internal object BluetoothProxyRuntime {
         }
         val apiServer = ApiServer(
             identity = identity,
-            bluetoothMac = syntheticMac(appContext, salt = "bt"),
+            bluetoothMac = if (config.deviceMacForBluetooth) identity.macAddress
+                else syntheticMac(appContext, salt = "bt"),
             port = config.port,
             psk = config.psk,
             backend = object : ScannerBackend {
@@ -150,6 +162,7 @@ internal object BluetoothProxyRuntime {
             rssiOf = nearby::lastRssi,
             entities = hub,
             voice = if (config.voice) voiceBackend(config) else null,
+            voiceTimers = config.timers,
         )
 
         try {
@@ -175,7 +188,8 @@ internal object BluetoothProxyRuntime {
             (if (connections != null)
                 " (connections enabled, ${connections.connectionLimit} slots)" else "") +
             (if (hub != null) " (${config.entities.size} entities)" else "") +
-            (if (config.voice) " (voice assistant)" else ""))
+            (if (config.voice) " (voice assistant)" else "") +
+            (if (config.voice && !config.timers) " (no timers)" else ""))
     }
 
     /** The voice backend: every Home Assistant message handed to the Dart side. */

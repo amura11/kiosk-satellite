@@ -888,6 +888,10 @@ void main() {
           'render.disable_impeller',
           'render.legacy_webview',
           'ui.scale',
+          // Live state: a sync would end a follower's hold or unlock it
+          // (#1505).
+          'ha.hold_mode',
+          'lockdown.enabled',
         ]),
       );
       // Every fleet key describes this kiosk's own place in a fleet.
@@ -967,7 +971,7 @@ void main() {
             'categories': [],
             'credentials': ['ha.token', 'bogus'],
           })!.describe(),
-          'Categories: 0 of 19. Credentials: 1 of 9. Excluded: 43.',
+          'Categories: 0 of 22. Credentials: 1 of 9. Excluded: 48.',
         );
         expect(
           withCreds['browser.start_url'],
@@ -2395,6 +2399,46 @@ void main() {
     }
   });
 
+  test('Ground Control travels with its own category and Voice Match with '
+      'Voice Satellite', () {
+    const gcOnly = SyncProfile(categories: {'Ground Control'});
+    expect(FleetSyncManager.syncs(defs.groundControlEnabled, gcOnly), isTrue);
+    expect(FleetSyncManager.syncs(defs.groundControlAddress, gcOnly), isTrue);
+    // The Features row links to Enable Voice Match and holds nothing.
+    expect(
+      FleetSyncManager.syncs(defs.groundControlVoiceMatch, gcOnly),
+      isFalse,
+    );
+    expect(FleetSyncManager.syncs(defs.voiceMatchEnabled, gcOnly), isFalse);
+    const voiceOnly = SyncProfile(categories: {'Voice Satellite'});
+    expect(FleetSyncManager.syncs(defs.voiceMatchEnabled, voiceOnly), isTrue);
+    expect(FleetSyncManager.syncs(defs.voiceMatchPeople, voiceOnly), isTrue);
+    expect(
+      FleetSyncManager.syncs(defs.groundControlEnabled, voiceOnly),
+      isFalse,
+    );
+    // Voice Match needs Ground Control, so a new profile syncs both.
+    expect(
+      defs.fleetDefaultCategories,
+      containsAll(['Ground Control', 'Voice Satellite']),
+    );
+  });
+
+  test('every settings category is a fleet category or stays local', () {
+    // Fleet describes this kiosk's place in the fleet. LED Control is not
+    // offered yet.
+    const local = {'Fleet', 'LED Control'};
+    final offered = {for (final c in defs.fleetSyncCategories) c.$1};
+    for (final def in defs.allSettings) {
+      final category = defs.fleetCategoryOf(def);
+      expect(
+        offered.contains(category) || local.contains(category),
+        isTrue,
+        reason: '${def.key} is in $category',
+      );
+    }
+  });
+
   test('the recorded former default exclusions lead to the current one', () {
     // Each former list is a real past default: a strict subset of the
     // current one, never equal to it (or every fresh profile would be
@@ -2406,11 +2450,29 @@ void main() {
       expect(former.containsAll(previous), isTrue);
       previous = former;
     }
-    // The per-chime volumes joined last (issue #998): the newest former
-    // list is the current one without them.
+    // Adaptive volume joined last (issue #1450): the newest former list
+    // is the current one without its volume switches and its curve (the
+    // main switch travels, like adaptive brightness's), the one before
+    // lacks the
+    // intercom's ring volume and the one before that the per-chime
+    // volumes too (issue #998).
+    final formers = defs.fleetFormerDefaultExcluded;
     expect(
-      defs.fleetFormerDefaultExcluded.last,
+      formers.last,
       defs.fleetDefaultExcluded.difference({
+        'audio.adaptive_volume_assistant',
+        'audio.adaptive_volume_media',
+        'audio.adaptive_volume_intercom',
+        'audio.adaptive_volume_curve',
+      }),
+    );
+    expect(
+      formers[formers.length - 2],
+      formers.last.difference({'intercom.ring_volume'}),
+    );
+    expect(
+      formers[formers.length - 3],
+      formers[formers.length - 2].difference({
         'voice_chimes.wake_volume',
         'voice_chimes.done_volume',
         'voice_chimes.error_volume',

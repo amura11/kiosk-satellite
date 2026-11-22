@@ -11,8 +11,10 @@ import '../../l10n/generated/language_codes.dart';
 import '../../l10n/generated/setting_ids.dart';
 import '../../l10n/generated/setting_option_ids.dart';
 
+import '../audio/adaptive_volume_curve.dart';
 import '../btproxy/node_name.dart';
 import '../music_library/music_pick.dart';
+import '../navigation/compass_layout.dart';
 
 enum SettingType { string, boolean, number, select, password }
 
@@ -33,6 +35,9 @@ class SettingDef<T> {
     this.dependsOnValue = true,
     this.alsoDependsOn,
     this.alsoDependsOnValue = true,
+    this.offWhen,
+    this.offWhenValue = true,
+    this.offNote,
     this.hidden = false,
     this.min,
     this.max,
@@ -103,7 +108,9 @@ class SettingDef<T> {
   /// list of them for a row that belongs to more than one mode (the Immich
   /// From date, which both Since and Timeframe want).
   /// A map with `gt` gates on a number greater than the supplied value, one
-  /// with `ne` on any value but the supplied one (a picker set to anything).
+  /// with `ne` on any value but the supplied one (a picker set to anything),
+  /// and with `neStartsWith` beside it on no value that starts with that
+  /// prefix either.
   final Object dependsOnValue;
 
   /// Whether [value] satisfies [dependsOnValue], which is a list when the
@@ -118,6 +125,12 @@ class SettingDef<T> {
     }
     if (wanted is Map && wanted.containsKey('ne')) {
       final ne = wanted['ne'];
+      // A prefix none of the values may start with either: every pick of
+      // a kind, such as each plugin player's.
+      final prefix = wanted['neStartsWith'];
+      if (prefix is String && value is String && value.startsWith(prefix)) {
+        return false;
+      }
       return ne is List ? !ne.contains(value) : value != ne;
     }
     return value == wanted;
@@ -135,6 +148,23 @@ class SettingDef<T> {
 
   bool alsoDependsSatisfiedBy(Object? value) =>
       _satisfies(value, alsoDependsOnValue);
+
+  /// Key of a setting that switches this row off while it holds
+  /// [offWhenValue]. Unlike [dependsOn] the row stays, greyed out with
+  /// [offNote] under it: it belongs to a feature people may already use
+  /// and would go looking for, such as pull to refresh under Compass
+  /// navigation. Both UIs read it.
+  final String? offWhen;
+
+  /// The value [offWhen] holds while this row is off, the shape of
+  /// [dependsOnValue].
+  final Object offWhenValue;
+
+  /// The message id of the line an off row shows under its description.
+  final String? offNote;
+
+  bool offBy(Object? value) =>
+      offWhen != null && _satisfies(value, offWhenValue);
 
   /// Persisted and readable, but never shown as a settings row. For state the
   /// app tracks on the user's behalf — e.g. whether the chosen media is a
@@ -241,20 +271,22 @@ const Map<String, String> subpageHints = {
   // Voice Satellite. Both pages are mostly live rows from the
   // integration rather than settings, so the pages themselves are
   // placed by the Voice Satellite page; only their names live here.
-  'Chimes': 'Wake, done, error, timer and announcement sounds',
+  'Chimes': 'Wake, done, error and announcement sounds',
   'Wake Word': 'Engine, wake words, sensitivity, cached models',
   'Appearance': 'Overlay skin, theme, activity bar, text size',
   // Native Voice Satellite's own pages.
   'Assistant': 'Pipelines, follow-ups',
   'Realtime': 'OpenAI, xAI Grok, Gemini, tools, talk over answers',
+  'Ground Control Voice Match': 'Recognition, Trimming and Isolation',
   'Conversation': 'What the overlay shows and for how long',
-  'Timers': 'Pills, alerts, spoken reminders',
   // Its entry row sits under the tester, not with the three pages above.
   'Wake word diagnostics':
       'Recent activations and near misses with audio clips',
   // Screen & Audio.
   'Microphone settings': 'Echo cancellation, noise, gain, format, live level',
+  'Equalizer': 'Bass, mids, treble, preamp',
   'Adaptive brightness': 'Follow the room light with the ambient light sensor',
+  'Adaptive volume': 'Follow the room noise with the microphone',
   // Screensaver. The mode pages only exist while that mode is the
   // one selected, since every setting on them gates on it.
   'Clock screensaver':
@@ -577,6 +609,9 @@ const pullToRefresh = SettingDef<bool>(
       'Drag down from the top of the page to reload it. Off by '
       'default: on a scrolling dashboard an accidental pull is easy.',
   category: 'Browser',
+  offWhen: 'nav.style',
+  offWhenValue: 'compass',
+  offNote: 'settingOffUnderCompass',
 );
 
 const pullToRefreshClearCache = SettingDef<bool>(
@@ -590,6 +625,9 @@ const pullToRefreshClearCache = SettingDef<bool>(
       'data are kept.',
   category: 'Browser',
   dependsOn: 'browser.pull_to_refresh',
+  offWhen: 'nav.style',
+  offWhenValue: 'compass',
+  offNote: 'settingOffUnderCompass',
 );
 
 const browserZoom = SettingDef<num>(
@@ -808,6 +846,40 @@ const ignoreSslErrors = SettingDef<bool>(
   category: 'Browser',
 );
 
+/// A user agent header value: one line, no control characters. The field
+/// is a multiline editor, and a line break typed or pasted there is not
+/// valid in a header, so each run of them becomes one space.
+String normalizeUserAgent(String value) => value
+    .replaceAll(RegExp(r'[\x00-\x1F\x7F]+'), ' ')
+    .replaceAll(RegExp(' {2,}'), ' ')
+    .trim();
+
+/// [SettingDef.normalizer] adapter for [normalizeUserAgent].
+Object normalizeUserAgentSetting(Object value) =>
+    value is String ? normalizeUserAgent(value) : value;
+
+/// The user agent the web views send in place of the WebView's own, for a
+/// site that turns away the default one (issue #1425: a firewall that
+/// refuses any user agent with the word Echo, which the Echo images carry
+/// in their model name). Empty keeps the default. It covers the dashboard,
+/// external pages and the Website screensaver. The app's own requests keep
+/// [AppIdentity.userAgent].
+const browserUserAgent = SettingDef<String>(
+  key: 'browser.user_agent',
+  type: SettingType.string,
+  defaultValue: '',
+  title: 'Custom user agent',
+  description:
+      'Sent to websites in place of the default user agent. Leave empty '
+      'to use the default.',
+  category: 'Browser',
+  // A user agent runs well past a one-line field, so it gets the editor
+  // with several lines. The normalizer folds any line break typed or
+  // pasted there into a space.
+  multiline: true,
+  normalizer: normalizeUserAgentSetting,
+);
+
 // Hidden: the URL Filter page in both settings surfaces owns this value,
 // a JSON array of {name, pattern, type, scope, action} rules for the
 // addresses the web views block, or the only ones they open (see
@@ -861,14 +933,21 @@ const webCamera = SettingDef<bool>(
   hidden: true,
 );
 
+/// Whether a page may read the device position through the HTML5
+/// Geolocation API (issue #1383): a weather radar or map card centering on
+/// the tablet. Off by default, and the one web grant with a row, in
+/// its own group on the Web Browsing page with the Location grant under it.
+/// Chromium offers the API to pages loaded over HTTPS only.
 const webGeolocation = SettingDef<bool>(
   key: 'web.geolocation',
   type: SettingType.boolean,
-  defaultValue: true,
+  defaultValue: false,
   title: 'Enable geolocation access',
-  description: 'Let web pages request the device location.',
-  category: 'Web Content',
-  hidden: true,
+  description:
+      'Lets pages read the device location, such as a weather radar or a '
+      'map. Only pages loaded over HTTPS can ask for it.',
+  category: 'Browser',
+  section: 'HTML5 Geolocation',
 );
 
 const webAutoplay = SettingDef<bool>(
@@ -1023,6 +1102,9 @@ const kioskDisablePullRefresh = SettingDef<bool>(
   description: 'Ignore the pull-to-refresh gesture while kiosk mode is on.',
   category: 'Kiosk',
   dependsOn: 'kiosk.enabled',
+  offWhen: 'nav.style',
+  offWhenValue: 'compass',
+  offNote: 'settingOffUnderCompass',
 );
 
 // Gestures themselves are not a kiosk feature: anything configured on the
@@ -1112,8 +1194,9 @@ const kioskAllowDrawer = SettingDef<bool>(
   defaultValue: false,
   title: 'Allow menu with quick actions',
   description:
-      'An edge swipe opens the menu without the exit gesture or PIN, '
-      'limited to the actions selected below.',
+      'Shows the menu without the exit gesture or PIN, limited to the '
+      'actions selected below. In Classic navigation an edge swipe opens '
+      'it. In Compass it is the Quick Controls view.',
   category: 'Kiosk',
   section: 'Allowed Actions',
   subpage: 'Allowed Actions',
@@ -1179,6 +1262,19 @@ const kioskAllowAlarms = SettingDef<bool>(
   section: 'Allowed Actions',
   subpage: 'Allowed Actions',
   dependsOn: 'kiosk.allow_drawer',
+);
+
+const kioskAllowTimers = SettingDef<bool>(
+  key: 'kiosk.allow_timers',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Timers',
+  description: 'Open the timers view from the kiosk menu.',
+  category: 'Kiosk',
+  section: 'Allowed Actions',
+  subpage: 'Allowed Actions',
+  dependsOn: 'kiosk.allow_drawer',
+  alsoDependsOn: 'timers.enabled',
 );
 
 const kioskAllowCalendar = SettingDef<bool>(
@@ -1319,6 +1415,9 @@ const kioskAllowedApps = SettingDef<String>(
 // gesture below replaces the kiosk one, so the two can share a value
 // without ever being armed together.
 
+// Per device (issue #1505): the switch is this kiosk's live state, and a
+// fleet sync would unlock a follower locked on its own. The rest of the
+// Lockdown setup still travels with its category.
 const lockdownEnabled = SettingDef<bool>(
   key: 'lockdown.enabled',
   type: SettingType.boolean,
@@ -1328,6 +1427,7 @@ const lockdownEnabled = SettingDef<bool>(
       'Disables screen interactions until turned off either from Home '
       'Assistant or with the exit gesture.',
   category: 'Lockdown',
+  perDevice: true,
 );
 
 /// Where the kiosk menu's Lockdown Mode row had its own switch. A link to
@@ -1340,6 +1440,25 @@ const lockdownMenu = SettingDef<bool>(
   description: 'Choose the items the drawer menu shows and their order.',
   category: 'Lockdown',
   linksTo: 'ui.drawer_items',
+);
+
+// A lock started from the kiosk menu is usually a screen wipe (issue
+// #1367), so it can lift on its own. Locks from Home Assistant or the
+// remote admin hold until turned off. Not gated on lockdown.enabled: it is
+// set up while the screen is unlocked.
+const lockdownAutoUnlockMinutes = SettingDef<num>(
+  key: 'lockdown.auto_unlock_minutes',
+  type: SettingType.number,
+  defaultValue: 0,
+  title: 'Unlock automatically after',
+  description:
+      'Turns Lockdown Mode off after this long when it is started from the '
+      'kiosk menu. Set to 0 to stay locked.',
+  category: 'Lockdown',
+  min: 0,
+  max: 10,
+  step: 1,
+  unit: 'min',
 );
 
 // The blackout variant: the same shield painted solid black. The panel
@@ -1938,6 +2057,82 @@ const assistantVolume = SettingDef<num>(
   section: 'Audio Volume',
 );
 
+// Adaptive volume (issue #1450): the room's noise sets how loud the kiosk
+// plays, the way its light sets the screen brightness. Its own page: the
+// switch, the room's level as the curve follows it, a switch per volume
+// and the curve, four points both UIs draw as one editor. A point holds a
+// noise level and the share of its own slider each volume plays at there,
+// so the sliders, the Home Assistant volume entities and the Music
+// Assistant player volume keep their meaning as the level in a loud room.
+// The room is only measured while the kiosk is silent: a volume is picked
+// before a sound starts and holds until it ends.
+const adaptiveVolume = SettingDef<bool>(
+  key: 'audio.adaptive_volume',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Enable adaptive volume',
+  description:
+      'Lower the volume as the room gets quieter, using the microphone.',
+  category: 'Screen & Audio',
+  subpage: 'Adaptive volume',
+  section: 'Adaptive volume',
+);
+
+const adaptiveVolumeAssistant = SettingDef<bool>(
+  key: 'audio.adaptive_volume_assistant',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Assistant',
+  description: 'Voice responses and chimes.',
+  category: 'Screen & Audio',
+  subpage: 'Adaptive volume',
+  section: 'Volumes',
+  dependsOn: 'audio.adaptive_volume',
+);
+
+const adaptiveVolumeMedia = SettingDef<bool>(
+  key: 'audio.adaptive_volume_media',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Media',
+  description: 'Music and video. Set when playback starts.',
+  category: 'Screen & Audio',
+  subpage: 'Adaptive volume',
+  section: 'Volumes',
+  dependsOn: 'audio.adaptive_volume',
+);
+
+const adaptiveVolumeIntercom = SettingDef<bool>(
+  key: 'audio.adaptive_volume_intercom',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Intercom',
+  description: 'Calls. Set when a call starts.',
+  category: 'Screen & Audio',
+  subpage: 'Adaptive volume',
+  section: 'Volumes',
+  dependsOn: 'audio.adaptive_volume',
+  alsoDependsOn: 'intercom.enabled',
+);
+
+// The curve's four points as one value (AdaptiveVolumeCurve): a JSON list
+// of [noise in dBFS, assistant, media, intercom in percent] rows. Both UIs
+// draw the editor in this row's place and write a whole curve at a time.
+const adaptiveVolumeCurve = SettingDef<String>(
+  key: 'audio.adaptive_volume_curve',
+  type: SettingType.string,
+  defaultValue: AdaptiveVolumeCurve.defaultJson,
+  title: 'Volume curve',
+  description:
+      'The volume at each room noise level, as a percentage of that '
+      "volume's slider under Screen & Audio.",
+  category: 'Screen & Audio',
+  subpage: 'Adaptive volume',
+  section: 'Volume curve',
+  dependsOn: 'audio.adaptive_volume',
+  validator: AdaptiveVolumeCurve.check,
+);
+
 // ── Screensaver ────────────────────────────────────────────────────────
 
 const screensaverEnabled = SettingDef<bool>(
@@ -1955,6 +2150,23 @@ const screensaverTimeoutSeconds = SettingDef<num>(
   defaultValue: 300,
   title: 'Idle timeout (seconds)',
   description: 'Inactivity period before the screensaver starts.',
+  category: 'Screensaver',
+);
+
+// A crossfade between the dashboard and the screensaver at both ends of a
+// session. The modes Flutter draws fade with an opacity. Android ignores
+// opacity on a platform view, so the plugin modes fade through a picture
+// of the screen and the web and camera modes cut as before
+// (ScreensaverManager.fadesView).
+const screensaverFade = SettingDef<bool>(
+  key: 'screensaver.fade',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Fade in and out',
+  description:
+      'The screensaver fades in over the dashboard and fades out when '
+      'dismissed. Not for the Home Assistant Media, Website or Camera '
+      'Streams screensavers.',
   category: 'Screensaver',
 );
 
@@ -2603,6 +2815,19 @@ const screensaverWeatherBarForecast = SettingDef<bool>(
   defaultValue: true,
   title: "Forecast",
   description: "The conditions, with a matching icon.",
+  category: 'Screensaver',
+  section: 'Weather information',
+  subpage: 'Weather Mood screensaver',
+  dependsOn: 'screensaver.weather_bar',
+);
+
+const screensaverWeatherBarHighLow = SettingDef<bool>(
+  key: 'screensaver.weather_bar_high_low',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: "High and low",
+  description:
+      "Show today's high and low when the weather entity has a daily forecast.",
   category: 'Screensaver',
   section: 'Weather information',
   subpage: 'Weather Mood screensaver',
@@ -4836,6 +5061,25 @@ const screensaverImmichFill = SettingDef<String>(
   dependsOn: 'screensaver.immich_validated',
 );
 
+// A photo cropped to fill the screen slides so the faces Immich detected in
+// it stay in view, instead of keeping the middle and cutting off heads
+// (issue #1552). The boxes come from the face.read endpoint, so a key
+// without that permission keeps the centered crop.
+const screensaverImmichCropFaces = SettingDef<bool>(
+  key: 'screensaver.immich_crop_faces',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Crop around faces',
+  description:
+      'Photos cropped to fill the screen keep the faces Immich found in '
+      'view. Needs the face.read permission.',
+  category: 'Screensaver',
+  section: 'Slideshow',
+  subpage: 'Immich Media screensaver',
+  dependsOn: 'screensaver.immich_fill',
+  dependsOnValue: ['smart', 'always'],
+);
+
 // Two portrait photos side by side instead of one framed by empty screen:
 // the pair fills a landscape panel the way a single portrait shot never
 // can. On by default, like Fill the screen's Smart setting, since filling
@@ -4879,6 +5123,65 @@ const screensaverImmichEdgeTaps = SettingDef<bool>(
   section: 'Slideshow',
   subpage: 'Immich Media screensaver',
   dependsOn: 'screensaver.immich_validated',
+);
+
+// A bar along the top or bottom edge that fills over each slide's hold, so a
+// photo worth calling someone over for says how long it has left (issue
+// #1522). Videos fill it over their own length unless Video length holds
+// them to Seconds per image.
+const screensaverImmichProgressBar = SettingDef<bool>(
+  key: 'screensaver.immich_progress_bar',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Show progress bar',
+  description: 'A thin bar shows the time left before the next slide.',
+  category: 'Screensaver',
+  section: 'Slideshow',
+  subpage: 'Immich Media screensaver',
+  dependsOn: 'screensaver.immich_validated',
+);
+
+const screensaverImmichProgressBarPosition = SettingDef<String>(
+  key: 'screensaver.immich_progress_bar_position',
+  type: SettingType.select,
+  defaultValue: 'bottom',
+  title: 'Progress bar position',
+  description: 'The edge of the screen the progress bar runs along.',
+  category: 'Screensaver',
+  section: 'Slideshow',
+  subpage: 'Immich Media screensaver',
+  options: ['top', 'bottom'],
+  optionLabels: {'top': 'Top', 'bottom': 'Bottom'},
+  dependsOn: 'screensaver.immich_progress_bar',
+);
+
+const screensaverImmichProgressBarColor = SettingDef<String>(
+  key: 'screensaver.immich_progress_bar_color',
+  type: SettingType.string,
+  defaultValue: '255,255,255',
+  title: 'Progress bar color',
+  description: 'The color of the progress bar.',
+  category: 'Screensaver',
+  section: 'Slideshow',
+  subpage: 'Immich Media screensaver',
+  dependsOn: 'screensaver.immich_progress_bar',
+);
+
+// Stops short of 100 percent, which would hide the bar the switch shows.
+const screensaverImmichProgressBarTransparency = SettingDef<num>(
+  key: 'screensaver.immich_progress_bar_transparency',
+  type: SettingType.number,
+  defaultValue: 20,
+  title: 'Progress bar transparency',
+  description: 'How much of the photo shows through the progress bar.',
+  category: 'Screensaver',
+  section: 'Slideshow',
+  subpage: 'Immich Media screensaver',
+  dependsOn: 'screensaver.immich_progress_bar',
+  min: 0,
+  max: 90,
+  step: 5,
+  unit: '%',
 );
 
 const screensaverImmichCache = SettingDef<bool>(
@@ -5391,6 +5694,27 @@ const screensaverNotificationBrightness = SettingDef<bool>(
   // their lift is governed by a row that is out of sight there; on is the
   // right thing for both, and the two dark modes are where an unreadable
   // notification is most likely in the first place.
+  dependsOn: 'screensaver.brightness_enabled',
+);
+
+/// A touch the screensaver keeps, on a plugin card, a notification or the
+/// first tap of a double tap, is someone using the panel, and a dimmed one
+/// is hard to use. The lift lasts this long after the last such touch.
+/// 0 turns it off.
+const screensaverTouchBrightnessSeconds = SettingDef<num>(
+  key: 'screensaver.touch_brightness_seconds',
+  type: SettingType.number,
+  defaultValue: 5,
+  min: 0,
+  max: 15,
+  step: 1,
+  unit: 's',
+  title: 'Brighten for touch interactions',
+  description:
+      'Lift the screensaver dimming for this long after a touch that does '
+      'not dismiss it. Set to 0 to turn it off.',
+  category: 'Screensaver',
+  // Under the switch it qualifies, as Brighten for notifications is.
   dependsOn: 'screensaver.brightness_enabled',
 );
 
@@ -6813,6 +7137,141 @@ const micCaptureFormat = SettingDef<String>(
   perDevice: true,
 );
 
+// The speaker equalizer (Equalizer.kt): five fixed bands and a preamp over
+// everything the kiosk plays from its own PCM, which is everything except
+// video, the dashboard's own sounds, touch sounds and the Bluetooth call
+// route. Each player equalizes its samples before it taps them for the echo
+// canceller, so the canceller's reference is the equalized sound and a band
+// moved while music plays costs it nothing. Per device: it corrects that
+// device's speaker.
+
+const equalizerEnabled = SettingDef<bool>(
+  key: 'audio.equalizer_enabled',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Enable equalizer',
+  description:
+      'Shapes the sound of music, the assistant, chimes and the intercom. '
+      'Video and dashboard sounds are not equalized.',
+  category: 'Screen & Audio',
+  section: 'Equalizer',
+  subpage: 'Equalizer',
+  perDevice: true,
+);
+
+const equalizerBand1 = SettingDef<num>(
+  key: 'audio.equalizer_bass',
+  type: SettingType.number,
+  defaultValue: 0,
+  min: -12,
+  max: 12,
+  step: 1,
+  unit: ' dB',
+  title: '100 Hz',
+  description: 'Bass. Small speakers distort early with a boost here.',
+  category: 'Screen & Audio',
+  section: 'Equalizer',
+  subpage: 'Equalizer',
+  dependsOn: 'audio.equalizer_enabled',
+  perDevice: true,
+);
+
+const equalizerBand2 = SettingDef<num>(
+  key: 'audio.equalizer_low_mid',
+  type: SettingType.number,
+  defaultValue: 0,
+  min: -12,
+  max: 12,
+  step: 1,
+  unit: ' dB',
+  title: '300 Hz',
+  description: 'Low mids. A cut takes out a boxy or boomy sound.',
+  category: 'Screen & Audio',
+  section: 'Equalizer',
+  subpage: 'Equalizer',
+  dependsOn: 'audio.equalizer_enabled',
+  perDevice: true,
+);
+
+const equalizerBand3 = SettingDef<num>(
+  key: 'audio.equalizer_mid',
+  type: SettingType.number,
+  defaultValue: 0,
+  min: -12,
+  max: 12,
+  step: 1,
+  unit: ' dB',
+  title: '1 kHz',
+  description: 'Mids, where most of a voice sits.',
+  category: 'Screen & Audio',
+  section: 'Equalizer',
+  subpage: 'Equalizer',
+  dependsOn: 'audio.equalizer_enabled',
+  perDevice: true,
+);
+
+const equalizerBand4 = SettingDef<num>(
+  key: 'audio.equalizer_high_mid',
+  type: SettingType.number,
+  defaultValue: 0,
+  min: -12,
+  max: 12,
+  step: 1,
+  unit: ' dB',
+  title: '3 kHz',
+  description: 'High mids. A boost makes speech clearer.',
+  category: 'Screen & Audio',
+  section: 'Equalizer',
+  subpage: 'Equalizer',
+  dependsOn: 'audio.equalizer_enabled',
+  perDevice: true,
+);
+
+const equalizerBand5 = SettingDef<num>(
+  key: 'audio.equalizer_treble',
+  type: SettingType.number,
+  defaultValue: 0,
+  min: -12,
+  max: 12,
+  step: 1,
+  unit: ' dB',
+  title: '10 kHz',
+  description: 'Treble.',
+  category: 'Screen & Audio',
+  section: 'Equalizer',
+  subpage: 'Equalizer',
+  dependsOn: 'audio.equalizer_enabled',
+  perDevice: true,
+);
+
+/// The bands in the order Equalizer.kt's frequencies run.
+const equalizerBands = [
+  equalizerBand1,
+  equalizerBand2,
+  equalizerBand3,
+  equalizerBand4,
+  equalizerBand5,
+];
+
+/// Lowers the whole signal by the most the bands raise any frequency. On by
+/// default on every device: a boost pushes the device's own amplifier or
+/// limiter harder, and what that does to the sound is past the canceller's
+/// reference, so it costs echo cancellation as well as sound quality.
+const equalizerPreamp = SettingDef<bool>(
+  key: 'audio.equalizer_preamp',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Automatic preamp',
+  description:
+      'Lowers the level by the largest boost so the speaker does not '
+      'distort and echo cancellation keeps working.',
+  category: 'Screen & Audio',
+  section: 'Equalizer',
+  subpage: 'Equalizer',
+  dependsOn: 'audio.equalizer_enabled',
+  perDevice: true,
+);
+
 // ── Wake word ──────────────────────────────────────────────────────────
 
 /// [SettingDef.normalizer] for the retired master switch: any write lands
@@ -7065,9 +7524,10 @@ const voiceWakeWordEngine = SettingDef<String>(
   dependsOn: 'voice.enabled',
 );
 
-/// The locale of Amazon's wake word models, under the Amazon engine. Empty
-/// follows the app's language. The options are the locales the Echo
-/// image's service lists (PryonCatalog), so SettingsManager fills them in.
+/// The locale of Amazon's wake word models, under the Amazon engine. The
+/// options are the locales the Echo image's service lists (PryonCatalog), so
+/// SettingsManager fills them in. Empty, or a locale the service does not
+/// have, reads as its first one.
 const voiceAmazonLocale = SettingDef<String>(
   key: 'voice.amazon_locale',
   type: SettingType.select,
@@ -7078,8 +7538,7 @@ const voiceAmazonLocale = SettingDef<String>(
       'offer the wake words it has.',
   category: 'Voice Satellite',
   subpage: 'Wake Word',
-  options: [''],
-  optionLabels: {'': "Kiosk Satellite's language"},
+  options: [],
   dependsOn: 'voice.wake_word_engine',
   dependsOnValue: 'pryon',
 );
@@ -7588,7 +8047,7 @@ const voiceRealtimeIdleSeconds = SettingDef<num>(
   category: 'Voice Satellite',
   subpage: 'Realtime',
   section: 'Conversation',
-  min: 5,
+  min: 2,
   max: 60,
   step: 1,
   unit: 's',
@@ -7722,6 +8181,235 @@ const voiceRealtimeMcpToken = SettingDef<String>(
   secret: true,
   dependsOn: 'voice.realtime_tools',
   dependsOnValue: 'custom',
+);
+
+// Ground Control: Kiosk Satellite Ground Control, a Home Assistant app or
+// Docker container, runs what is too heavy for a kiosk on a capable machine.
+// The kiosk signs in with its Home Assistant token and finds it by mDNS
+// unless an address is set. Its features have their own pages: Voice Match
+// under Voice Satellite.
+
+const groundControlEnabled = SettingDef<bool>(
+  key: 'ground_control.enabled',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Enable Ground Control',
+  description:
+      'Connect to Kiosk Satellite Ground Control, which runs Voice Match on '
+      'a capable machine.',
+  category: 'Ground Control',
+);
+
+const groundControlAddress = SettingDef<String>(
+  key: 'ground_control.address',
+  type: SettingType.string,
+  defaultValue: '',
+  title: 'Address',
+  description:
+      'Leave empty to find Ground Control on the network. Enter one for '
+      'Ground Control on another network.',
+  category: 'Ground Control',
+  section: 'Connection',
+  placeholder: '192.168.1.10:10900',
+  dependsOn: 'ground_control.enabled',
+);
+
+/// Ground Control's features, each a row under Features that opens its page:
+/// Voice Match lives under Voice Satellite. Vision Match, coming soon,
+/// is a row of its own under this one (GroundControlComingSoonRow, and
+/// ground_control.js on the remote).
+const groundControlVoiceMatch = SettingDef<bool>(
+  key: 'ground_control.voice_match',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Voice Match',
+  description: 'Recognition, Trimming and Isolation.',
+  category: 'Ground Control',
+  section: 'Features',
+  linksTo: 'voice_match.enabled',
+);
+
+// Voice Match, with Ground Control: Recognition (who is talking), Trimming
+// (other voices cut out between the user's words, and the command ends when
+// they stop) and Isolation (other voices removed under their words too).
+
+const voiceMatchEnabled = SettingDef<bool>(
+  key: 'voice_match.enabled',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Enable Voice Match',
+  description:
+      'Who is talking, and only their voice in the command. Needs Ground '
+      'Control.',
+  category: 'Voice Satellite',
+  subpage: 'Ground Control Voice Match',
+  dependsOn: 'voice.enabled',
+  alsoDependsOn: 'ground_control.enabled',
+);
+
+/// Who this kiosk answers: anyone, or only the people chosen in
+/// [voiceMatchPeople].
+const voiceMatchPolicy = SettingDef<String>(
+  key: 'voice_match.policy',
+  type: SettingType.select,
+  defaultValue: 'anyone',
+  title: 'Answer',
+  description: 'Chosen people ignores the TV, guests and everyone else.',
+  category: 'Voice Satellite',
+  subpage: 'Ground Control Voice Match',
+  section: 'Recognition',
+  options: ['anyone', 'people'],
+  optionLabels: {'anyone': 'Anyone', 'people': 'Chosen people'},
+  dependsOn: 'voice_match.enabled',
+);
+
+/// The people this kiosk answers with [voiceMatchPolicy] on Chosen people,
+/// as a JSON list of `{id, name}`: the name keeps a pick readable while
+/// Ground Control is away. Nobody chosen answers anyone enrolled.
+const voiceMatchPeople = SettingDef<String>(
+  key: 'voice_match.people',
+  type: SettingType.string,
+  defaultValue: '[]',
+  title: 'People',
+  description:
+      'Who this kiosk answers. With nobody chosen, it answers anyone '
+      'enrolled.',
+  category: 'Voice Satellite',
+  subpage: 'Ground Control Voice Match',
+  section: 'Recognition',
+  dependsOn: 'voice_match.policy',
+  dependsOnValue: 'people',
+  normalizer: normalizeVoiceMatchPeople,
+);
+
+/// One person picked in [voiceMatchPeople].
+typedef VoiceMatchPick = ({String id, String name});
+
+/// [voiceMatchPeople] read back, in order, each person once. Empty for a
+/// value that does not parse.
+List<VoiceMatchPick> decodeVoiceMatchPeople(String value) {
+  try {
+    final decoded = jsonDecode(value);
+    if (decoded is! List) return const [];
+    final seen = <String>{};
+    return [
+      for (final p in decoded)
+        if (p is Map && p['id'] is String && (p['id'] as String).isNotEmpty)
+          if (seen.add(p['id'] as String))
+            (
+              id: p['id'] as String,
+              name: p['name'] is String ? p['name'] as String : '',
+            ),
+    ];
+  } catch (_) {
+    return const [];
+  }
+}
+
+String encodeVoiceMatchPeople(List<VoiceMatchPick> people) => jsonEncode([
+  for (final p in people) {'id': p.id, 'name': p.name},
+]);
+
+/// Stores [voiceMatchPeople] as a clean list, so a hand-written API value
+/// that is not one reads as nobody chosen.
+Object normalizeVoiceMatchPeople(Object value) => encodeVoiceMatchPeople(
+  decodeVoiceMatchPeople(value is String ? value : ''),
+);
+
+const voiceMatchRejected = SettingDef<String>(
+  key: 'voice_match.rejected',
+  type: SettingType.select,
+  defaultValue: 'quiet',
+  title: 'Voice not chosen',
+  description: 'What happens when someone else says the wake word.',
+  category: 'Voice Satellite',
+  subpage: 'Ground Control Voice Match',
+  section: 'Recognition',
+  options: ['quiet', 'chime'],
+  optionLabels: {'quiet': 'Stay quiet', 'chime': 'Play the error chime'},
+  dependsOn: 'voice_match.policy',
+  dependsOnValue: 'people',
+);
+
+/// A Speaker text sensor on this kiosk's ESPHome device, for automations
+/// and LLM agents (they read it with GetLiveContext on each turn).
+const voiceMatchSpeakerSensor = SettingDef<bool>(
+  key: 'voice_match.speaker_sensor',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Speaker sensor',
+  description:
+      'Adds a Speaker sensor to this kiosk in Home Assistant, for automations '
+      'and agent instructions.',
+  category: 'Voice Satellite',
+  subpage: 'Ground Control Voice Match',
+  section: 'Recognition',
+  dependsOn: 'voice_match.enabled',
+);
+
+const voiceMatchShowSpeaker = SettingDef<bool>(
+  key: 'voice_match.show_speaker',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Show who is talking',
+  description:
+      "The speaker's name before the command on the voice overlay, in their "
+      'color. On a device with a light ring, the listening arc takes the '
+      'color.',
+  category: 'Voice Satellite',
+  subpage: 'Ground Control Voice Match',
+  section: 'Recognition',
+  dependsOn: 'voice_match.enabled',
+);
+
+const voiceMatchAllowEnroll = SettingDef<bool>(
+  key: 'voice_match.allow_enroll',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Allow enrollment here',
+  description:
+      "Lets the Ground Control app record a person's voice with this kiosk's "
+      'microphone. The kiosk shows the text to read, or the light ring '
+      'shows the progress.',
+  category: 'Voice Satellite',
+  subpage: 'Ground Control Voice Match',
+  section: 'Recognition',
+  dependsOn: 'voice_match.enabled',
+);
+
+/// Trimming: in follow mode Ground Control sends back only the user's
+/// speech. The key predates the name.
+const voiceMatchEndOnOtherVoice = SettingDef<bool>(
+  key: 'voice_match.end_on_other_voice',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Enable Trimming',
+  description:
+      'Other voices, like a TV or other people, are cut out between the '
+      'words of the person who said the wake word, and the command ends '
+      'when they stop.',
+  category: 'Voice Satellite',
+  subpage: 'Ground Control Voice Match',
+  section: 'Trimming',
+  dependsOn: 'voice_match.enabled',
+);
+
+/// Isolation: Ground Control also removes other voices under the user's
+/// words, when Isolation is on in its own settings too. Sent with each
+/// Trimming session as `isolation`.
+const voiceMatchIsolation = SettingDef<bool>(
+  key: 'voice_match.isolation',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Enable Isolation',
+  description:
+      'Other voices talking over the words of the person who said the wake '
+      'word are removed too. The command waits for it once they stop. Needs '
+      'Isolation on in Ground Control.',
+  category: 'Voice Satellite',
+  subpage: 'Ground Control Voice Match',
+  section: 'Isolation',
+  dependsOn: 'voice_match.end_on_other_voice',
 );
 
 /// The mirrored selects by the key the kiosk's device gives each one.
@@ -8140,16 +8828,31 @@ const voiceAnnouncementLinger = SettingDef<num>(
   dependsOn: 'voice.enabled',
 );
 
+/// The master switch for timers on this kiosk. Off, the ESPHome voice
+/// assistant stops offering timers, so Home Assistant's timer intents and
+/// its LLM timer tools leave this kiosk to your own setup (issue #1508).
+/// The Timers view, the pills, shared timers and the timer entities and
+/// actions go with it. Home Assistant reads the feature at connect, so a
+/// flip restarts the ESPHome server.
+const timersEnabled = SettingDef<bool>(
+  key: 'timers.enabled',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Enable timers',
+  description: 'Set timers on this kiosk by voice and by hand.',
+  category: 'Timers',
+);
+
 const voiceTimerPills = SettingDef<bool>(
   key: 'voice.timer_pills',
   type: SettingType.boolean,
-  defaultValue: true,
-  title: 'Show timer pills',
-  description: 'Running timers float over the screen. Drag them anywhere.',
-  category: 'Voice Satellite',
-  subpage: 'Timers',
+  defaultValue: false,
+  title: 'Show timers as pills',
+  description:
+      'Timers float over the screen instead of opening the full screen view.',
+  category: 'Timers',
   section: 'Pills',
-  dependsOn: 'voice.enabled',
+  dependsOn: 'timers.enabled',
 );
 
 const voiceTimerNameInPill = SettingDef<bool>(
@@ -8158,10 +8861,10 @@ const voiceTimerNameInPill = SettingDef<bool>(
   defaultValue: true,
   title: 'Show the timer name',
   description: 'The name beside the time in a pill.',
-  category: 'Voice Satellite',
-  subpage: 'Timers',
+  category: 'Timers',
   section: 'Pills',
-  dependsOn: 'voice.enabled',
+  dependsOn: 'voice.timer_pills',
+  alsoDependsOn: 'voice.enabled',
 );
 
 /// The pills draw for both runtimes (the dashboard's integration pushes
@@ -8172,13 +8875,13 @@ const voiceTimerPillScale = SettingDef<num>(
   defaultValue: 100,
   title: 'Timer pill scale',
   description: 'The size of the timer pills.',
-  category: 'Voice Satellite',
-  subpage: 'Timers',
+  category: 'Timers',
   section: 'Pills',
   min: 50,
   max: 300,
   step: 5,
   unit: '%',
+  dependsOn: 'voice.timer_pills',
 );
 
 const voiceTimerAlertPill = SettingDef<bool>(
@@ -8187,10 +8890,10 @@ const voiceTimerAlertPill = SettingDef<bool>(
   defaultValue: true,
   title: 'Show finished timer pills',
   description: 'Tap the pill to stop the alert.',
-  category: 'Voice Satellite',
-  subpage: 'Timers',
-  section: 'When a timer ends',
-  dependsOn: 'voice.enabled',
+  category: 'Timers',
+  section: 'Pills',
+  dependsOn: 'voice.timer_pills',
+  alsoDependsOn: 'voice.enabled',
 );
 
 const voiceMuteTimers = SettingDef<bool>(
@@ -8199,10 +8902,56 @@ const voiceMuteTimers = SettingDef<bool>(
   defaultValue: false,
   title: 'Mute timer alerts',
   description: 'Show the alert without the sound.',
-  category: 'Voice Satellite',
-  subpage: 'Timers',
+  category: 'Timers',
   section: 'When a timer ends',
   dependsOn: 'voice.enabled',
+  alsoDependsOn: 'timers.enabled',
+);
+
+/// The choices of Silence after and Dismiss after, in seconds. 0 never
+/// does it.
+const _timerAlertLimits = ['0', '30', '60', '120', '300', '600', '900', '1800'];
+const _timerAlertLimitLabels = {
+  '0': 'Never',
+  '30': '30 seconds',
+  '60': '1 minute',
+  '120': '2 minutes',
+  '300': '5 minutes',
+  '600': '10 minutes',
+  '900': '15 minutes',
+  '1800': '30 minutes',
+};
+
+/// How long a finished timer rings before the sound stops. The alert stays
+/// on screen until it is dismissed. It counts from the last timer that
+/// finished, and covers the timers other kiosks share too.
+const timersSilenceAfter = SettingDef<String>(
+  key: 'timers.silence_after',
+  type: SettingType.select,
+  defaultValue: '0',
+  title: 'Silence after',
+  description: 'The finished timer stays on screen until it is dismissed.',
+  category: 'Timers',
+  section: 'When a timer ends',
+  dependsOn: 'timers.enabled',
+  options: _timerAlertLimits,
+  optionLabels: _timerAlertLimitLabels,
+);
+
+/// How long this kiosk's own finished timers stay before they are
+/// dismissed as a tap on Dismiss does. A timer another kiosk shares
+/// follows the setting of the kiosk it came from.
+const timersDismissAfter = SettingDef<String>(
+  key: 'timers.dismiss_after',
+  type: SettingType.select,
+  defaultValue: '0',
+  title: 'Dismiss after',
+  description: 'Clears a finished timer as if Dismiss was tapped.',
+  category: 'Timers',
+  section: 'When a timer ends',
+  dependsOn: 'timers.enabled',
+  options: _timerAlertLimits,
+  optionLabels: _timerAlertLimitLabels,
 );
 
 const voiceTimerNameOnAlert = SettingDef<bool>(
@@ -8211,9 +8960,8 @@ const voiceTimerNameOnAlert = SettingDef<bool>(
   defaultValue: true,
   title: 'Show the name on the alert',
   description: 'The timer name under the alert.',
-  category: 'Voice Satellite',
-  subpage: 'Timers',
-  section: 'When a timer ends',
+  category: 'Timers',
+  section: 'Pills',
   dependsOn: 'voice.timer_alert_pill',
 );
 
@@ -8223,10 +8971,10 @@ const voiceTimerSpeak = SettingDef<bool>(
   defaultValue: false,
   title: 'Speak when a timer ends',
   description: 'Say a phrase between the alert sounds.',
-  category: 'Voice Satellite',
-  subpage: 'Timers',
+  category: 'Timers',
   section: 'When a timer ends',
   dependsOn: 'voice.enabled',
+  alsoDependsOn: 'timers.enabled',
 );
 
 const voiceTimerPhrase = SettingDef<String>(
@@ -8235,8 +8983,7 @@ const voiceTimerPhrase = SettingDef<String>(
   defaultValue: 'Your timer is up.',
   title: 'Phrase',
   description: 'Spoken for a timer without a name.',
-  category: 'Voice Satellite',
-  subpage: 'Timers',
+  category: 'Timers',
   section: 'When a timer ends',
   dependsOn: 'voice.timer_speak',
 );
@@ -8247,10 +8994,174 @@ const voiceTimerNamedPhrase = SettingDef<String>(
   defaultValue: 'Your {name} timer is up.',
   title: 'Phrase for named timers',
   description: '{name} is replaced with the timer name.',
-  category: 'Voice Satellite',
-  subpage: 'Timers',
+  category: 'Timers',
   section: 'When a timer ends',
   dependsOn: 'voice.timer_speak',
+);
+
+/// Whether a timer that starts opens the full screen timers view. Off, the
+/// view waits for the near completion mark or the finish. The pills never
+/// leave the screen, so the row goes with them on.
+const timersShowOnStart = SettingDef<bool>(
+  key: 'timers.show_on_start',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Show Timers view when a timer starts',
+  description: 'Open the Timers view each time a timer is started.',
+  category: 'Timers',
+  dependsOn: 'voice.timer_pills',
+  dependsOnValue: false,
+);
+
+/// Show Timers view when near completion: how long before a running timer
+/// ends the full screen timers view comes back, for someone who closed it
+/// or moved to another view after the timer started. The pills never leave
+/// the screen, so the row goes with them on.
+const timersShowBeforeEnd = SettingDef<num>(
+  key: 'timers.show_before_end',
+  type: SettingType.number,
+  defaultValue: 60,
+  title: 'Show Timers view when near completion',
+  description: 'How long before a timer ends the Timers view opens.',
+  category: 'Timers',
+  min: 30,
+  max: 300,
+  step: 30,
+  unit: 's',
+  dependsOn: 'voice.timer_pills',
+  dependsOnValue: false,
+);
+
+/// Keeps the screensaver from starting while the timers view is open with
+/// a running timer on it. Off, only a timer near its end or finished holds
+/// the screensaver. The pills never leave the screen, so the row goes with
+/// them on.
+const timersPauseScreensaver = SettingDef<bool>(
+  key: 'timers.pause_screensaver',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Pause screensaver while a timer runs',
+  description:
+      'Keep the screensaver from starting while the Timers view shows a '
+      'running timer.',
+  category: 'Timers',
+  dependsOn: 'voice.timer_pills',
+  dependsOnValue: false,
+);
+
+/// The size of the names, buttons and other timers in the full screen
+/// Timers view (issue #1544). The time of the first timer takes the room
+/// they leave. On a small screen the view grows them only as far as the
+/// room allows, so the time stays large and nothing overlaps. Unlike the
+/// rows above, it applies with the pills on too: the view still opens
+/// from the menu, a gesture or Compass.
+const timersViewScale = SettingDef<num>(
+  key: 'timers.view_scale',
+  type: SettingType.number,
+  defaultValue: 100,
+  title: 'Timers view scale',
+  description: 'The size of the timer names and buttons in the Timers view.',
+  category: 'Timers',
+  min: 75,
+  max: 200,
+  step: 5,
+  unit: '%',
+  dependsOn: 'timers.enabled',
+);
+
+/// The kiosk menu's Timers row: a link to Drawer menu items, which decides
+/// every row, as on the Alarms page.
+const timersMenu = SettingDef<bool>(
+  key: 'timers.menu',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Show in the kiosk menu',
+  description: 'Choose the items the drawer menu shows and their order.',
+  category: 'Timers',
+  dependsOn: 'timers.enabled',
+  linksTo: 'ui.drawer_items',
+);
+
+/// The Home Assistant text to speech entity that speaks the timer phrase;
+/// empty picks the first one Home Assistant has. Picked from the list,
+/// never typed, like the Alarms engine.
+const timersTtsEngine = SettingDef<String>(
+  key: 'timers.tts_engine',
+  type: SettingType.string,
+  defaultValue: '',
+  title: 'Text to speech engine',
+  description: 'The Home Assistant text to speech entity that speaks timers.',
+  category: 'Timers',
+  section: 'Text to Speech',
+  dependsOn: 'voice.timer_speak',
+  placeholder: 'First available',
+);
+
+/// The language timers are spoken in, the Alarms language's twin.
+const timersTtsLanguage = SettingDef<String>(
+  key: 'timers.tts_language',
+  type: SettingType.string,
+  defaultValue: '',
+  title: 'Language',
+  description: 'The language timers are spoken in.',
+  category: 'Timers',
+  section: 'Text to Speech',
+  dependsOn: 'timers.tts_engine',
+  dependsOnValue: {'ne': ''},
+  placeholder: 'Default',
+);
+
+/// The voice timers are spoken with, the Alarms voice's twin.
+const timersTtsVoice = SettingDef<String>(
+  key: 'timers.tts_voice',
+  type: SettingType.string,
+  defaultValue: '',
+  title: 'Voice',
+  description: 'The voice that speaks timers.',
+  category: 'Timers',
+  section: 'Text to Speech',
+  dependsOn: 'timers.tts_engine',
+  dependsOnValue: {'ne': ''},
+  placeholder: 'Default',
+);
+
+/// Shared timers: this kiosk's timers also run on the kiosks it picks.
+const voiceTimersShare = SettingDef<bool>(
+  key: 'voice.timers_share',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Share timers',
+  description: 'Timers started on this kiosk also run on the kiosks you pick.',
+  category: 'Timers',
+  section: 'Shared timers',
+  dependsOn: 'voice.enabled',
+  alsoDependsOn: 'timers.enabled',
+);
+
+/// The kiosks this one shares its timers with: a JSON list of
+/// `{id, name}`, the ids the discovery knows them by. Each kiosk picks its
+/// own, so it never travels with a fleet profile.
+const voiceTimersShareWith = SettingDef<String>(
+  key: 'voice.timers_share_with',
+  type: SettingType.string,
+  defaultValue: '[]',
+  title: 'Share with',
+  description: 'The kiosks that show and ring the timers of this one.',
+  category: 'Timers',
+  section: 'Shared timers',
+  dependsOn: 'voice.timers_share',
+  perDevice: true,
+);
+
+const voiceTimersReceive = SettingDef<bool>(
+  key: 'voice.timers_receive',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Show shared timers',
+  description: 'Timers shared by other kiosks show and ring here.',
+  category: 'Timers',
+  section: 'Shared timers',
+  dependsOn: 'timers.enabled',
 );
 
 const voiceWakeSound = SettingDef<bool>(
@@ -8307,8 +9218,9 @@ const voiceChimeTimer = SettingDef<String>(
   defaultValue: '',
   title: 'Timer sound',
   description: 'Repeats when a timer finishes until you dismiss it.',
-  category: 'Voice Satellite',
-  subpage: 'Chimes',
+  category: 'Timers',
+  section: 'When a timer ends',
+  dependsOn: 'timers.enabled',
   perDevice: true,
   validator: validateNotificationSound,
 );
@@ -8388,8 +9300,9 @@ const voiceChimeTimerVolume = SettingDef<num>(
   unit: '%',
   title: 'Timer sound volume',
   description: 'A share of the assistant volume.',
-  category: 'Voice Satellite',
-  subpage: 'Chimes',
+  category: 'Timers',
+  section: 'When a timer ends',
+  dependsOn: 'timers.enabled',
 );
 
 const voiceChimeAnnounceVolume = SettingDef<num>(
@@ -8620,6 +9533,9 @@ const haDashboardCarousel = SettingDef<bool>(
   category: 'Home Assistant',
   section: 'User Interface',
   subpage: 'User Interface',
+  offWhen: 'nav.style',
+  offWhenValue: 'compass',
+  offNote: 'settingOffUnderCompass',
 );
 
 /// Carousel priority over gesture-handling cards (#238). By default a
@@ -8645,6 +9561,9 @@ const haCarouselOverCards = SettingDef<bool>(
   section: 'User Interface',
   subpage: 'User Interface',
   dependsOn: 'ha.dashboard_carousel',
+  offWhen: 'nav.style',
+  offWhenValue: 'compass',
+  offNote: 'settingOffUnderCompass',
 );
 
 /// Haptic feedback for the dashboard (in-page script, see
@@ -8980,6 +9899,8 @@ const haReturnHomeSeconds = SettingDef<num>(
 /// every surface stays in step and the state survives a restart. While on,
 /// the screensaver will not start, dashboard view rotation freezes in
 /// place, the return-home timer stands down and the display stays awake.
+/// Per device (issue #1505): it is this kiosk's live state, and a fleet
+/// sync would turn a follower's hold off again within minutes.
 const haHoldMode = SettingDef<bool>(
   key: 'ha.hold_mode',
   type: SettingType.boolean,
@@ -8991,6 +9912,7 @@ const haHoldMode = SettingDef<bool>(
   category: 'Home Assistant',
   section: 'Hold mode',
   subpage: 'Hold mode',
+  perDevice: true,
 );
 
 /// The forgotten-hold guard: a kiosk left on hold overnight never sleeps
@@ -9118,8 +10040,9 @@ const cameraAutoDismissSeconds = SettingDef<num>(
   unit: ' s',
   title: 'Auto-dismiss after',
   description:
-      'Close an opened camera view on its own; 0 keeps it up. The camera '
-      'screensaver is unaffected.',
+      'Closes an opened camera view after this long. 0 keeps it open. The '
+      'camera screensaver is unaffected. In the Compass layout, Return to '
+      'center applies instead.',
   category: 'Cameras',
 );
 
@@ -9273,6 +10196,8 @@ const sendspinVolumeKeys = SettingDef<String>(
   alsoDependsOn: 'sendspin.player',
   alsoDependsOnValue: {
     'ne': ['session:*', 'airplay'],
+    // Nor a player a plugin publishes.
+    'neStartsWith': 'plugin:',
   },
 );
 
@@ -9478,6 +10403,8 @@ const sendspinEnabled = SettingDef<bool>(
   alsoDependsOn: 'sendspin.player',
   alsoDependsOnValue: {
     'ne': ['session:*', 'airplay'],
+    // Nor a player a plugin publishes.
+    'neStartsWith': 'plugin:',
   },
   type: SettingType.boolean,
   defaultValue: false,
@@ -10367,7 +11294,9 @@ const libraryIdleCloseMinutes = SettingDef<String>(
   type: SettingType.select,
   defaultValue: '2',
   title: 'Close when idle',
-  description: 'Returns to the dashboard after no touch for this long.',
+  description:
+      'Returns to the dashboard after no touch for this long. In the '
+      'Compass layout, Return to center applies instead.',
   category: 'Sendspin',
   subpage: 'Music Library',
   section: 'Music Library',
@@ -11130,6 +12059,31 @@ const btproxyScreenOffScan = SettingDef<bool>(
   dependsOn: 'btproxy.enabled',
 );
 
+/// The proxy tells Home Assistant two addresses: the ESPHome device's MAC
+/// and a Bluetooth one, which names the scanner. Ours were two unrelated
+/// generated values, while an ESP32's sit two apart, and Bermuda links a
+/// scanner to its ESPHome device only when they are within a few of each
+/// other. One unlinked scanner costs Bermuda 0.8.7 the per-proxy distance
+/// sensors of every scanner (issue #1442). On, both are the device's MAC,
+/// which is how Home Assistant reads a proxy that sends no Bluetooth
+/// address. Opt-in because the scanner's address changes in Home
+/// Assistant, and whatever is stored per scanner there (Bermuda's signal
+/// offsets) has to be entered again. Read at connect, so a change
+/// restarts the server.
+const btproxyDeviceMac = SettingDef<bool>(
+  key: 'btproxy.device_mac',
+  type: SettingType.boolean,
+  defaultValue: false,
+  title: 'Use the device MAC address for Bluetooth',
+  description:
+      'Lets integrations like Bermuda link this proxy to its device. '
+      'Changes the proxy\'s address in Home Assistant.',
+  category: 'ESPHome',
+  section: 'Bluetooth Proxy',
+  subpage: 'Bluetooth Proxy',
+  dependsOn: 'btproxy.enabled',
+);
+
 const btproxyConnections = SettingDef<bool>(
   key: 'btproxy.connections',
   type: SettingType.boolean,
@@ -11612,17 +12566,35 @@ const intercomRingSeconds = SettingDef<String>(
 );
 
 /// A file in the sounds folder like the notification sound, or empty for
-/// the bundled chime. Plays at the notification volume.
+/// the bundled chime. Plays at [intercomRingVolume].
 const intercomRingSound = SettingDef<String>(
   key: 'intercom.ring_sound',
   type: SettingType.string,
   defaultValue: '',
   title: 'Ring sound',
-  description: 'Plays at the notification volume.',
+  description: 'Plays at the ring volume.',
   category: 'Intercom',
   section: 'Answer',
   dependsOn: 'intercom.enabled',
   validator: validateNotificationSound,
+);
+
+/// How loud a call rings here, the built-in ring or [intercomRingSound],
+/// on the same scale as the notification volume the ring used to follow.
+/// An install from before it starts on its notification volume.
+const intercomRingVolume = SettingDef<num>(
+  key: 'intercom.ring_volume',
+  type: SettingType.number,
+  defaultValue: 0.7,
+  title: 'Ring volume',
+  description: 'How loud a call rings, apart from the media volume.',
+  category: 'Intercom',
+  section: 'Answer',
+  min: 0,
+  max: 1,
+  step: 0.05,
+  unit: '%',
+  dependsOn: 'intercom.enabled',
 );
 
 /// Off, the kiosk refuses Announce to all from the other kiosks.
@@ -11743,6 +12715,26 @@ const intercomHangupKeyRinging = SettingDef<String>(
   optionLabels: {'answer': 'Accept', 'decline': 'Decline', 'ignore': 'Ignore'},
   dependsOn: 'intercom.hangup_key',
   dependsOnValue: {'ne': 'off'},
+  perDevice: true,
+);
+
+/// Buttons this kiosk puts on the screen of the kiosk it calls (issue
+/// #1504), such as Open gate on a kiosk by the gate. A JSON list of
+/// `{label, icon, action}`, the action a gesture action object. A tap on
+/// the other kiosk comes back here and runs the action on this kiosk. Kept
+/// on the kiosk it belongs to: an Open gate pushed to every kiosk in a
+/// fleet would show on every call.
+const intercomCallButtons = SettingDef<String>(
+  key: 'intercom.call_buttons',
+  type: SettingType.string,
+  defaultValue: '[]',
+  title: 'Call buttons',
+  description:
+      'Buttons on the screen of the kiosk you call. A tap runs the action '
+      'on this kiosk.',
+  category: 'Intercom',
+  section: 'Call buttons',
+  dependsOn: 'intercom.enabled',
   perDevice: true,
 );
 
@@ -11974,6 +12966,29 @@ const alarmsSunriseMinutes = SettingDef<String>(
   },
 );
 
+/// How long before an alarm the Clock and Weather Mood screensavers show a
+/// Skip button for its next ring (issue #1479). 0 is Off.
+const alarmsSkipMinutes = SettingDef<String>(
+  key: 'alarms.skip_minutes',
+  type: SettingType.select,
+  defaultValue: '10',
+  title: 'Skip button',
+  description:
+      'How long before an alarm the Clock and Weather Mood screensavers '
+      'show a button to skip it.',
+  category: 'Alarms',
+  section: 'Defaults',
+  options: ['0', '5', '10', '15', '30', '60'],
+  optionLabels: {
+    '0': 'Off',
+    '5': '5 minutes',
+    '10': '10 minutes',
+    '15': '15 minutes',
+    '30': '30 minutes',
+    '60': '60 minutes',
+  },
+);
+
 /// The Home Assistant text to speech entity an alarm speaks its phrase
 /// with; empty picks the first one Home Assistant has. Picked from the
 /// list, never typed, like the Announcements engine.
@@ -12188,7 +13203,9 @@ const calendarIdleCloseMinutes = SettingDef<String>(
   type: SettingType.select,
   defaultValue: '2',
   title: 'Close when idle',
-  description: 'Returns to the dashboard after no touch for this long.',
+  description:
+      'Returns to the dashboard after no touch for this long. In the '
+      'Compass layout, Return to center applies instead.',
   category: 'Calendar',
   section: 'Kiosk',
   options: ['0', '1', '2', '5', '10'],
@@ -12226,6 +13243,11 @@ String? validateCalendarList(Object? value) {
 /// The Web Content grants ride with Web Browsing, the one category without
 /// a page of its own.
 const fleetSyncCategories = <(String, String, String)>[
+  ('Navigation', 'Navigation', ''),
+  // Enable Ground Control and its address. The Voice Match settings on
+  // Voice Satellite > Ground Control Voice Match travel with Voice
+  // Satellite.
+  ('Ground Control', 'Ground Control', ''),
   // ha.satellite_entity stays per kiosk; its row (Assigned satellite) is
   // on the Voice Satellite page, so the note goes there.
   ('Home Assistant', 'Home Assistant', ''),
@@ -12252,6 +13274,7 @@ const fleetSyncCategories = <(String, String, String)>[
   ('Intercom', 'Intercom', 'the key, unless synced as a credential'),
   ('Alarms', 'Alarms', 'the alarms themselves'),
   ('Calendar', 'Calendar', 'the calendars hidden with their chips'),
+  ('Timers', 'Timers', 'the kiosks picked in Share with, the timer sound'),
   (
     'Device',
     'Device',
@@ -12366,6 +13389,13 @@ const fleetDefaultExcluded = {
   'voice_chimes.error_volume',
   'voice_chimes.alert_volume',
   'voice_chimes.announce_volume',
+  // Adaptive volume: which volumes follow the room is the room's to say,
+  // and the curve's noise levels are what this device's microphone reads
+  // there. The main switch travels, like adaptive brightness's.
+  'audio.adaptive_volume_assistant',
+  'audio.adaptive_volume_media',
+  'audio.adaptive_volume_intercom',
+  'audio.adaptive_volume_curve',
   // Files and picks that only resolve on the device that made them.
   'screensaver.gallery_items',
   'screensaver.local_folder',
@@ -12384,8 +13414,9 @@ const fleetDefaultExcluded = {
   'browser.cutout_mode',
   // Which way the panel is mounted.
   'screen.orientation',
-  // The intercom volume: every speaker is its own, like the other volumes.
+  // The intercom volumes: every speaker is its own, like the other volumes.
   'intercom.volume',
+  'intercom.ring_volume',
   // The answer mode carries Do not disturb, which each room sets for itself.
   'intercom.answer_mode',
   // Voice Satellite's mute is the room's, and every room plays its sounds
@@ -12680,6 +13711,99 @@ const fleetFormerDefaultExcluded = <Set<String>>[
     'voice.mute',
     'voice.tts_output',
   },
+  // Before the intercom's ring volume joined.
+  {
+    'browser.zoom',
+    'screensaver.website_zoom',
+    'screensaver.clock_scale',
+    'screensaver.widget_scale',
+    'screensaver.immich_metadata_scale',
+    'screensaver.glance_scale',
+    'face.preview_scale',
+    'sendspin.player_size',
+    'screen.default_brightness',
+    'screen.adaptive_min_brightness',
+    'screen.adaptive_max_brightness',
+    'screen.adaptive_dark_lux',
+    'screen.adaptive_bright_lux',
+    'screen.adaptive_use_entity',
+    'screen.adaptive_light_entity',
+    'screensaver.brightness_level',
+    'screensaver.dim_level',
+    'audio.media_volume',
+    'audio.assistant_volume',
+    'notifications.volume',
+    'ha.tap_sound_volume',
+    'voice_chimes.wake_volume',
+    'voice_chimes.done_volume',
+    'voice_chimes.error_volume',
+    'voice_chimes.alert_volume',
+    'voice_chimes.announce_volume',
+    'screensaver.gallery_items',
+    'screensaver.local_folder',
+    'screensaver.clock_background',
+    'notifications.chime_file',
+    'launcher.apps',
+    'motion.sensitivity',
+    'motion.fps',
+    'face.sensitivity',
+    'camera.snapshot_resolution',
+    'motion.use_entity',
+    'motion.entity',
+    'browser.cutout_mode',
+    'screen.orientation',
+    'intercom.volume',
+    'intercom.answer_mode',
+    'voice.mute',
+    'voice.tts_output',
+  },
+  // Before adaptive volume joined (issue #1450).
+  {
+    'browser.zoom',
+    'screensaver.website_zoom',
+    'screensaver.clock_scale',
+    'screensaver.widget_scale',
+    'screensaver.immich_metadata_scale',
+    'screensaver.glance_scale',
+    'face.preview_scale',
+    'sendspin.player_size',
+    'screen.default_brightness',
+    'screen.adaptive_min_brightness',
+    'screen.adaptive_max_brightness',
+    'screen.adaptive_dark_lux',
+    'screen.adaptive_bright_lux',
+    'screen.adaptive_use_entity',
+    'screen.adaptive_light_entity',
+    'screensaver.brightness_level',
+    'screensaver.dim_level',
+    'audio.media_volume',
+    'audio.assistant_volume',
+    'notifications.volume',
+    'ha.tap_sound_volume',
+    'voice_chimes.wake_volume',
+    'voice_chimes.done_volume',
+    'voice_chimes.error_volume',
+    'voice_chimes.alert_volume',
+    'voice_chimes.announce_volume',
+    'screensaver.gallery_items',
+    'screensaver.local_folder',
+    'screensaver.clock_background',
+    'notifications.chime_file',
+    'launcher.apps',
+    'motion.sensitivity',
+    'motion.fps',
+    'face.sensitivity',
+    'camera.snapshot_resolution',
+    'motion.use_entity',
+    'motion.entity',
+    'browser.cutout_mode',
+    'screen.orientation',
+    'intercom.volume',
+    'intercom.ring_volume',
+    'intercom.answer_mode',
+    'voice.mute',
+    'voice.tts_output',
+  },
 ];
 
 /// Hidden settings that travel in a fleet exactly when another one does:
@@ -12700,6 +13824,7 @@ const fleetFollowsKey = {
 
 /// What a new follower gets unless the leader says otherwise.
 const fleetDefaultCategories = {
+  'Ground Control',
   'Home Assistant',
   'Voice Satellite',
   'Browser',
@@ -12954,6 +14079,19 @@ String effectiveHostname(String typed, String deviceName) {
   return esphomeNodeFromDeviceName(deviceName);
 }
 
+/// The name this kiosk goes by in Ground Control: the hostname above,
+/// else `kiosk-satellite-` and the end of the fleet id (the Android ID),
+/// the name the Bluetooth proxy takes without one. So a kiosk with no
+/// device name and no mDNS name still connects (Ground Control #15).
+/// Empty only while the fleet id is not written yet.
+String groundControlDeviceId(String typed, String deviceName, String fleetId) {
+  final named = effectiveHostname(typed, deviceName);
+  if (named.isNotEmpty) return named;
+  final id = esphomeNodeSlug(fleetId).replaceAll('-', '');
+  if (id.isEmpty) return '';
+  return 'kiosk-satellite-${id.length > 6 ? id.substring(id.length - 6) : id}';
+}
+
 const uiLanguage = SettingDef<String>(
   key: 'ui.language',
   type: SettingType.select,
@@ -13103,6 +14241,103 @@ const uiDrawerItems = SettingDef<String>(
   description: 'Choose the items the drawer menu shows and their order.',
   category: 'Device',
   section: 'User Interface',
+);
+
+// Settings > Navigation: how the kiosk is moved around. Classic is the
+// drawer menu and the gestures it came with, Compass lays views out in a
+// cross and swipes between them, with a Menu view in place of the drawer.
+const navStyle = SettingDef<String>(
+  key: 'nav.style',
+  type: SettingType.select,
+  defaultValue: 'classic',
+  options: ['classic', 'compass'],
+  optionLabels: {'classic': 'Classic', 'compass': 'Compass'},
+  title: 'Navigation style',
+  description:
+      'Classic keeps the drawer menu, pull to refresh and the dashboard '
+      'carousel. Compass swipes between views laid out in a cross.',
+  category: 'Navigation',
+  section: 'Navigation style',
+);
+
+/// The views around the center (see managers/navigation/compass_layout.dart
+/// for the stored shape). Edited in the layout editor on both surfaces,
+/// never typed. Empty is Home Assistant with the Menu on its left.
+const navCompassLayout = SettingDef<String>(
+  key: 'nav.compass_layout',
+  type: SettingType.string,
+  defaultValue: '',
+  title: 'Compass layout',
+  description:
+      'Up to two views on each side. Add several Home Assistant dashboard '
+      'views and one of each other kind.',
+  category: 'Navigation',
+  section: 'Compass layout',
+  dependsOn: 'nav.style',
+  dependsOnValue: 'compass',
+  validator: validateCompassLayout,
+  normalizer: normalizeCompassLayout,
+);
+
+const navCompassAnimation = SettingDef<String>(
+  key: 'nav.compass_animation',
+  type: SettingType.select,
+  defaultValue: 'zoom',
+  options: ['zoom', 'slide'],
+  optionLabels: {'zoom': 'Zoom', 'slide': 'Slide'},
+  title: 'Swipe animation',
+  description: 'Zoom out to show the views around, or slide straight across.',
+  category: 'Navigation',
+  section: 'Compass options',
+  dependsOn: 'nav.style',
+  dependsOnValue: 'compass',
+);
+
+const navCompassPosition = SettingDef<bool>(
+  key: 'nav.compass_position',
+  type: SettingType.boolean,
+  defaultValue: true,
+  title: 'Show position while swiping',
+  description: 'A small map of where you are.',
+  category: 'Navigation',
+  section: 'Compass options',
+  dependsOn: 'nav.style',
+  dependsOnValue: 'compass',
+);
+
+/// Back to the center view after this long without a touch. 0 stays put.
+const navCompassReturnMinutes = SettingDef<num>(
+  key: 'nav.compass_return_minutes',
+  type: SettingType.number,
+  defaultValue: 5,
+  min: 0,
+  max: 30,
+  step: 1,
+  unit: 'min',
+  title: 'Return to center',
+  description:
+      'Go back to the center view after no touch for this long. Set to 0 '
+      'to stay on the view.',
+  category: 'Navigation',
+  section: 'Compass options',
+  dependsOn: 'nav.style',
+  dependsOnValue: 'compass',
+);
+
+// The Menu view draws the drawer menu's own list, so its items are picked
+// there.
+const navCompassMenuItems = SettingDef<String>(
+  key: 'nav.compass_menu_items',
+  type: SettingType.string,
+  defaultValue: '',
+  title: 'Menu items',
+  description:
+      'What the Quick Controls view shows. Shared with the drawer menu.',
+  category: 'Navigation',
+  section: 'Compass options',
+  dependsOn: 'nav.style',
+  dependsOnValue: 'compass',
+  linksTo: 'ui.drawer_items',
 );
 
 /// Every source Show system toast notifications can turn off, in the
@@ -13321,6 +14556,7 @@ const ledTimersEnabled = SettingDef<bool>(
   category: 'LED Control',
   section: 'Timers',
   dependsOn: 'led.enabled',
+  alsoDependsOn: 'timers.enabled',
 );
 
 const ledTimersBrightness = SettingDef<num>(
@@ -13560,6 +14796,12 @@ const ledSettings = <SettingDef<Object>>[
 ];
 
 const List<SettingDef<Object>> allSettings = [
+  navStyle,
+  navCompassLayout,
+  navCompassAnimation,
+  navCompassPosition,
+  navCompassReturnMinutes,
+  navCompassMenuItems,
   startUrl,
   secureProxy,
   autoReloadOnError,
@@ -13573,6 +14815,7 @@ const List<SettingDef<Object>> allSettings = [
   browserInjectJsExternal,
   allowMixedContent,
   ignoreSslErrors,
+  browserUserAgent,
   browserUrlFilter,
   browserUrlFilterNotice,
   webMicrophone,
@@ -13601,6 +14844,7 @@ const List<SettingDef<Object>> allSettings = [
   kioskAllowCamera,
   kioskAllowIntercom,
   kioskAllowAlarms,
+  kioskAllowTimers,
   kioskAllowCalendar,
   kioskAllowMusicLibrary,
   kioskAllowMusic,
@@ -13613,6 +14857,7 @@ const List<SettingDef<Object>> allSettings = [
   kioskAllowedApps,
   lockdownEnabled,
   lockdownMenu,
+  lockdownAutoUnlockMinutes,
   lockdownBlackout,
   lockdownAllowScreensaver,
   lockdownExitGesture,
@@ -13653,6 +14898,13 @@ const List<SettingDef<Object>> allSettings = [
   mediaVolume,
   intercomVolume,
   assistantVolume,
+  // After the mixer: the page's entry row sits under the Audio Volume
+  // card on both UIs.
+  adaptiveVolume,
+  adaptiveVolumeAssistant,
+  adaptiveVolumeMedia,
+  adaptiveVolumeIntercom,
+  adaptiveVolumeCurve,
   audioMicDevice,
   audioSpeakerDevice,
   micCaptureMode,
@@ -13664,6 +14916,10 @@ const List<SettingDef<Object>> allSettings = [
   // Hand-built row: renders after the gain in both UIs, and only when the
   // selected microphone reports more than one channel.
   micChannel,
+  // A page of its own, its entry row under the Microphone settings one.
+  equalizerEnabled,
+  ...equalizerBands,
+  equalizerPreamp,
   screensaverEnabled,
   screensaverTimeoutSeconds,
   // The separate brightness applies to every content mode, so it lives with
@@ -13671,6 +14927,7 @@ const List<SettingDef<Object>> allSettings = [
   screensaverBrightnessEnabled,
   screensaverBrightnessLevel,
   screensaverNotificationBrightness,
+  screensaverTouchBrightnessSeconds,
   screensaverScreenOffMinutes,
   screensaverScreenOffBlack,
   screensaverScreenOffWakeToScreensaver,
@@ -13685,6 +14942,7 @@ const List<SettingDef<Object>> allSettings = [
   screensaverMiniClockColor,
   screensaverMiniClock24h,
   screensaverMiniClockDate,
+  screensaverFade,
   screensaverMode,
   screensaverWeatherEntity,
   screensaverWeatherLightning,
@@ -13710,6 +14968,7 @@ const List<SettingDef<Object>> allSettings = [
   screensaverWeatherBarLocation,
   screensaverWeatherBarFeelsLike,
   screensaverWeatherBarForecast,
+  screensaverWeatherBarHighLow,
   screensaverWeatherBarHumidity,
   screensaverWeatherBarWind,
   screensaverWeatherBarVisibility,
@@ -13845,9 +15104,14 @@ const List<SettingDef<Object>> allSettings = [
   screensaverImmichShuffle,
   screensaverImmichTransition,
   screensaverImmichFill,
+  screensaverImmichCropFaces,
   screensaverImmichPairPortrait,
   screensaverImmichPairLandscape,
   screensaverImmichEdgeTaps,
+  screensaverImmichProgressBar,
+  screensaverImmichProgressBarPosition,
+  screensaverImmichProgressBarColor,
+  screensaverImmichProgressBarTransparency,
   screensaverImmichMetadata,
   screensaverImmichMetadataAlbum,
   screensaverImmichMetadataDate,
@@ -14011,6 +15275,18 @@ const List<SettingDef<Object>> allSettings = [
   voiceRealtimeTools,
   voiceRealtimeMcpUrl,
   voiceRealtimeMcpToken,
+  groundControlEnabled,
+  groundControlAddress,
+  groundControlVoiceMatch,
+  voiceMatchEnabled,
+  voiceMatchPolicy,
+  voiceMatchPeople,
+  voiceMatchRejected,
+  voiceMatchSpeakerSensor,
+  voiceMatchShowSpeaker,
+  voiceMatchAllowEnroll,
+  voiceMatchEndOnOtherVoice,
+  voiceMatchIsolation,
   voiceWakeWordSensitivity,
   voiceWakeWordFineTune,
   voiceNoiseGate,
@@ -14034,15 +15310,33 @@ const List<SettingDef<Object>> allSettings = [
   voiceAnswerLinger,
   voiceResultsLinger,
   voiceAnnouncementLinger,
+  // The Timers page, in its groups' order: the untitled card, Shared
+  // timers, When a timer ends, Text to Speech, Pills.
+  timersEnabled,
+  timersShowOnStart,
+  timersShowBeforeEnd,
+  timersPauseScreensaver,
+  timersViewScale,
+  timersMenu,
+  voiceTimersShare,
+  voiceTimersShareWith,
+  voiceTimersReceive,
+  voiceChimeTimer,
+  voiceChimeTimerVolume,
+  voiceMuteTimers,
+  timersSilenceAfter,
+  timersDismissAfter,
+  voiceTimerSpeak,
+  voiceTimerPhrase,
+  voiceTimerNamedPhrase,
+  timersTtsEngine,
+  timersTtsLanguage,
+  timersTtsVoice,
   voiceTimerPills,
   voiceTimerNameInPill,
   voiceTimerPillScale,
   voiceTimerAlertPill,
-  voiceMuteTimers,
   voiceTimerNameOnAlert,
-  voiceTimerSpeak,
-  voiceTimerPhrase,
-  voiceTimerNamedPhrase,
   haUrl,
   haToken,
   haAutoLogin,
@@ -14188,8 +15482,6 @@ const List<SettingDef<Object>> allSettings = [
   voiceChimeDoneVolume,
   voiceChimeError,
   voiceChimeErrorVolume,
-  voiceChimeTimer,
-  voiceChimeTimerVolume,
   voiceChimeAnnounce,
   voiceChimeAnnounceVolume,
   notificationsChimeFile,
@@ -14203,6 +15495,7 @@ const List<SettingDef<Object>> allSettings = [
   btproxyEnabled,
   btproxyScanDuty,
   btproxyScreenOffScan,
+  btproxyDeviceMac,
   btproxyConnections,
   btproxyMinConnectRssi,
   btproxyMacLookup,
@@ -14263,11 +15556,13 @@ const List<SettingDef<Object>> allSettings = [
   intercomAutoAnswerCamera,
   intercomRingSeconds,
   intercomRingSound,
+  intercomRingVolume,
   intercomAcceptAnnouncements,
   intercomTalkMode,
   intercomMaxCallMinutes,
   intercomHangupKey,
   intercomHangupKeyRinging,
+  intercomCallButtons,
   intercomVideo,
   intercomVideoQuality,
   intercomTls,
@@ -14283,6 +15578,7 @@ const List<SettingDef<Object>> allSettings = [
   alarmsSnoozeMinutes,
   alarmsSilenceAfterMinutes,
   alarmsSunriseMinutes,
+  alarmsSkipMinutes,
   alarmsPhrase,
   alarmsTtsEngine,
   alarmsTtsLanguage,

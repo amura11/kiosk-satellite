@@ -1,6 +1,6 @@
 # Home Assistant Events
 
-Kiosk Satellite fires an event on the Home Assistant bus whenever a voice turn, a timer, an intercom call, an alarm, a notification card, the screensaver or the screen changes. Automations can trigger on them with an event trigger. They go out over the ESPHome connection, so turn on **Settings > ESPHome** and add the kiosk to Home Assistant first. **Expose kiosk entities** is not needed.
+Kiosk Satellite fires an event on the Home Assistant bus whenever a voice turn, a timer, the person talking, an intercom call, an alarm, a notification card, the screensaver or the screen changes. Automations can trigger on them with an event trigger. They go out over the ESPHome connection, so turn on **Settings > ESPHome** and add the kiosk to Home Assistant first. **Expose kiosk entities** is not needed.
 
 Home Assistant only fires device events under `esphome.`, hence the prefix. Every event carries `event_type` with what happened. Home Assistant adds `device_id`, the kiosk's ESPHome device. Use `device_id` to react to one kiosk only. You can find it in the URL of the kiosk's device page.
 
@@ -8,6 +8,7 @@ Home Assistant only fires device events under `esphome.`, hence the prefix. Ever
 | --- | --- |
 | [`esphome.kiosk_satellite_voice`](#voice-satellite) | Voice Satellite interactions |
 | [`esphome.kiosk_satellite_timer`](#timers) | Voice Satellite timers |
+| [`esphome.kiosk_satellite_speaker`](#speaker) | Who is talking, with [Voice Match](voice-match.md) |
 | [`esphome.kiosk_satellite_intercom`](#intercom) | Intercom calls and announcements |
 | [`esphome.kiosk_satellite_alarm`](#alarms) | Alarms |
 | [`esphome.kiosk_satellite_notification`](#notifications) | Notification cards leaving the screen |
@@ -26,11 +27,13 @@ data:
   device_id: 5f1c...
   event_type: started
   reason: voice
+  slot: 2
+  wake_word: Hey Jarvis
 ```
 
 | `event_type` | When |
 | --- | --- |
-| `started` | A voice interaction begins: a turn, an announcement, a `vs_show` prompt, a realtime conversation or a ringing timer. `reason` says which: `voice`, `announcement`, `show`, `conversation` or `timer`. |
+| `started` | A voice interaction begins: a turn, an announcement, a `vs_show` prompt, a realtime conversation or a ringing timer. `reason` says which: `voice`, `announcement`, `show`, `conversation` or `timer`. A turn, a realtime conversation and a `vs_show` also carry `slot`, the Assistant that answers (1 or 2), and `wake_word`, the wake word that started it. `wake_word` is empty when no wake word did, as for a `vs_show`. `vs_wake` reports the wake word of the slot it starts. |
 | `listening` | The microphone opens for a command. |
 | `thinking` | The command is in and the assistant is working on it. |
 | `speaking` | The answer starts playing. |
@@ -55,6 +58,44 @@ actions:
       entity_id: media_player.living_room
     data:
       volume_level: 0.1
+```
+
+## Speaker
+
+With [Voice Match](voice-match.md) on, the kiosk fires this event each time Ground Control places the voice of the person talking, about a second into a command. A realtime conversation fires it again on each turn.
+
+```yaml
+event_type: esphome.kiosk_satellite_speaker
+data:
+  device_id: 5f1c...
+  event_type: recognized
+  name: Ana
+  person: person.ana
+  score: 0.71
+  by: voice
+```
+
+| Field | What it holds |
+| --- | --- |
+| `event_type` | `recognized` for an enrolled person, `unknown` for a voice nobody enrolled. |
+| `name` | The person's name in Ground Control. Empty for `unknown`. |
+| `person` | The Home Assistant person set for them on Ground Control's People page, or empty. |
+| `score` | How close the voice was to theirs, from 0 to 1. Empty when the only person enrolled was taken without a check. |
+| `by` | `voice` from their speech, `wake_word` from the wake word, `conversation` on a follow-up when an earlier turn of the conversation recognized them or `only_person` when only one person is enrolled. Empty for `unknown`. |
+
+```yaml
+# Turn on the reading light in the kids' room when Leo talks to its kiosk.
+triggers:
+  - trigger: event
+    event_type: esphome.kiosk_satellite_speaker
+    event_data:
+      event_type: recognized
+      person: person.leo
+      device_id: 5f1c...
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.kids_reading_light
 ```
 
 ## Timers

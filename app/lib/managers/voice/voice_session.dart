@@ -30,9 +30,45 @@ abstract class VoiceLinkPort {
 
   Future<bool> audio(Uint8List pcm);
 
+  /// The end of the command's audio (VoiceAssistantAudio end=true): Home
+  /// Assistant closes the audio stream and speech to text finishes. A
+  /// VoiceAssistantRequest with start=false aborts the run instead.
+  Future<bool> audioEnd();
+
   /// An announcement or spoken answer finished playing: the satellite goes
   /// back to idle in Home Assistant.
   Future<bool> finished();
+}
+
+/// Kiosk Satellite Voice Match, for one turn at a time.
+abstract class VoiceMatchPort {
+  /// A session for a new turn, or null when Voice Match is off or not
+  /// connected. [onEvent] gets the service's events (speaker, other_voice,
+  /// end_of_speech, turn_start, turn_end, rejected, stats) as maps with a
+  /// `type`.
+  ///
+  /// [follow] asks for follow mode: only the user's speech comes back
+  /// ([onAudio]) to forward in place of the microphone. [followup] is a
+  /// later turn of the same conversation, with no wake word of its own.
+  /// [onLost] says the service went away before the turn was over.
+  VoiceMatchTurnPort? begin(
+    void Function(Map<String, Object?> event) onEvent, {
+    bool follow = false,
+    bool followup = false,
+    void Function(Uint8List pcm)? onAudio,
+    void Function()? onLost,
+  });
+}
+
+abstract class VoiceMatchTurnPort {
+  /// A chunk of the turn's microphone audio.
+  void feed(Uint8List pcm);
+
+  /// The turn is over.
+  void end();
+
+  /// The service answered the start.
+  bool get ready;
 }
 
 /// The microphone: the wake word engine's capture, pre-roll first.
@@ -78,6 +114,9 @@ class VoiceSessionOptions {
     this.announcementLingerSeconds = 5,
     this.stopWord = false,
     this.remoteSpeech = false,
+    this.matchEndOnOtherVoice = true,
+    this.matchNoSpeech = const Duration(seconds: 10),
+    this.matchRejectChime = false,
   });
 
   final bool seamless;
@@ -92,6 +131,20 @@ class VoiceSessionOptions {
   /// The answers play on another speaker: nothing here to take the bar's
   /// level from, so it does not follow one.
   final bool remoteSpeech;
+
+  /// Voice Match: end the turn when someone else (the TV) takes over.
+  /// Trimming: Home Assistant hears only the user's speech
+  /// (follow mode), and the command ends when the user stops, whatever a
+  /// TV does. Off, Voice Match only says who is talking.
+  final bool matchEndOnOtherVoice;
+
+  /// In follow mode, how long to wait for the user to start talking before
+  /// the command ends with nothing said, as Home Assistant's own wait does.
+  final Duration matchNoSpeech;
+
+  /// Voice Match: a voice that is not chosen, on a kiosk that answers
+  /// chosen people only, gets the error chime rather than silence.
+  final bool matchRejectChime;
 }
 
 /// An announcement from Home Assistant (assist_satellite.announce,
@@ -144,8 +197,18 @@ class VoiceSession {
     this.onIntentEnd,
     this.onIdle,
     this.onTrace,
+    this.voiceMatch,
+    this.onSpeaker,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
+
+  /// Kiosk Satellite Voice Match, when it is on.
+  final VoiceMatchPort? voiceMatch;
+
+  /// Who is talking (a speaker event), or null when a turn starts and
+  /// nobody is known yet.
+  final void Function(Map<String, Object?>? speaker)? onSpeaker;
+  VoiceMatchTurnPort? _match;
 
   final VoiceLinkPort link;
   final VoiceMicPort mic;
@@ -179,6 +242,19 @@ class VoiceSession {
   static const vadWatchdog = Duration(seconds: 60);
   static const playbackSafety = Duration(seconds: 120);
   static const stopWordArmDelay = Duration(milliseconds: 250);
+
+  /// How long an answer or an announcement has to have played before the
+  /// stop word stops it ([stopWordHeld]). Echo cancellation takes the least
+  /// off a sound's first second, and what is left of the kiosk's own voice
+  /// there was taken for the stop word: with Amazon's German model every
+  /// answer ended about a second in (#1548, #1558). Nobody stops an answer
+  /// that soon. The stop word listens through it all the same: armed only
+  /// after it, a detector judges the second and a half it has just heard.
+  static const stopWordHold = Duration(milliseconds: 1500);
+
+  /// The hold ends this long after a sound went to the player when the
+  /// player never says where the sound is.
+  static const stopWordHoldLatest = Duration(seconds: 3);
   static const noMediaAnnouncement = Duration(seconds: 3);
   static const remoteChimeSafety = Duration(seconds: 35);
 
@@ -282,6 +358,21 @@ class VoiceSession {
     required bool chime,
     required bool keepPreRoll,
   }) async {
+    _endMatch();
+    onSpeaker?.call(null);
+    final follow = options().matchEndOnOtherVoice;
+    final match = voiceMatch?.begin(
+      (e) => _onMatch(gen, e),
+      follow: follow,
+      followup: _phase == _Phase.followup,
+      onAudio: (pcm) => _onMatchAudio(gen, pcm),
+      onLost: () => _onMatchLost(gen),
+    );
+    _match = match;
+    _following = match != null && follow;
+    _followSent = false;
+    _followMic.clear();
+    _followMicBytes = 0;
     final opened = await mic.open((pcm, preRoll) => _onChunk(gen, pcm));
     if (gen != _gen) {
       if (opened) await mic.close();
@@ -358,7 +449,7 @@ class VoiceSession {
     // at 0 through the wait.
     _micLevels(_sending ? _levels.micSlices(pcm) : const [0]);
     if (_sending) {
-      unawaited(link.audio(pcm));
+      _send(pcm);
       return;
     }
     _held.add(pcm);
@@ -370,14 +461,92 @@ class VoiceSession {
   }
 
   void _startSending({required bool keepHeld}) {
+    // Voice Match hears what Home Assistant hears: never the chime, whose
+    // echo would read as speech and end the command before it starts.
     if (keepHeld) {
       for (final pcm in _held) {
-        unawaited(link.audio(pcm));
+        _send(pcm);
       }
     }
     _held.clear();
     _heldBytes = 0;
     _sending = true;
+  }
+
+  /// A chunk Home Assistant would hear. In follow mode it goes to Voice
+  /// Match only, and the user's speech comes back to forward; the kiosk
+  /// keeps it too, in case Voice Match goes away before any comes back.
+  void _send(Uint8List pcm) {
+    _match?.feed(pcm);
+    if (!_following) {
+      unawaited(link.audio(pcm));
+      return;
+    }
+    if (!_followSent) {
+      _followMic.add(pcm);
+      _followMicBytes += pcm.length;
+      while (_followMicBytes > 320000 && _followMic.isNotEmpty) {
+        _followMicBytes -= _followMic.removeAt(0).length;
+      }
+    }
+    // A service that does not answer in time is as good as gone.
+    final gen = _gen;
+    _readyTimer ??= Timer(matchReadyWait, () {
+      if (gen == _gen && _following && !(_match?.ready ?? false)) {
+        _onMatchLost(gen);
+      }
+    });
+    _noSpeechTimer ??= Timer(options().matchNoSpeech, () {
+      if (_following && !_followSent) {
+        // Home Assistant has had no audio at all, so ending its audio leaves
+        // it waiting: cancel the run instead. A late event from Voice Match
+        // belongs to the cancelled turn and is ignored.
+        onTrace?.call('voice match: nobody talked');
+        unawaited(cancel());
+      }
+    });
+  }
+
+  /// Follow mode: following, the user's speech came back, and what the
+  /// microphone heard while it had not.
+  bool _following = false;
+  bool _followSent = false;
+  final _followMic = <Uint8List>[];
+  int _followMicBytes = 0;
+  Timer? _noSpeechTimer;
+  Timer? _readyTimer;
+
+  /// How long follow mode waits for Voice Match to answer before Home
+  /// Assistant gets the microphone instead.
+  static const matchReadyWait = Duration(milliseconds: 1500);
+
+  void _onMatchAudio(int gen, Uint8List pcm) {
+    if (gen != _gen || !_following || !_sending) return;
+    if (!_followSent) {
+      _followSent = true;
+      _followMic.clear();
+      _followMicBytes = 0;
+    }
+    unawaited(link.audio(pcm));
+  }
+
+  /// Voice Match went away mid-turn: Home Assistant gets the microphone
+  /// again, from the start of the command when nothing came back yet.
+  void _onMatchLost(int gen) {
+    if (gen != _gen || !_following) return;
+    _following = false;
+    _noSpeechTimer?.cancel();
+    _noSpeechTimer = null;
+    _readyTimer?.cancel();
+    _readyTimer = null;
+    onTrace?.call('voice match lost, back to the microphone');
+    if (!_followSent && _sending) {
+      for (final pcm in _followMic) {
+        unawaited(link.audio(pcm));
+      }
+    }
+    _followMic.clear();
+    _followMicBytes = 0;
   }
 
   Future<void> _closeMic() async {
@@ -578,16 +747,21 @@ class VoiceSession {
     _position = null;
     _length = null;
     Timer? arm;
+    _StopHold? hold;
     if (armStopWord && options().stopWord) {
       arm = Timer(stopWordArmDelay, () {
         if (gen == _gen && _playId == id) onStopArmed(true);
       });
+      hold = _StopHold(id)..endIn(stopWordHoldLatest);
+      _stopHold = hold;
     }
     final guard = Timer(safety, () {
       if (!done.isCompleted) done.complete(false);
     });
     final ok = await done.future;
     arm?.cancel();
+    hold?.cancel();
+    if (identical(_stopHold, hold)) _stopHold = null;
     guard.cancel();
     if (_playId == id) {
       _playId = null;
@@ -614,12 +788,31 @@ class VoiceSession {
   Duration? _length;
   DateTime? _positionAt;
 
+  /// The hold of the sound playing now, when the stop word can stop it.
+  _StopHold? _stopHold;
+
+  /// Whether the sound playing now has only just started, so the stop word
+  /// is not taken yet ([stopWordHold]). A ringing timer or alarm is not a
+  /// sound of the session and is never held.
+  bool get stopWordHeld => !(_stopHold?.over ?? true);
+
   /// The player's report of where the sound playing now is.
   void onSoundProgress(String id, Duration position, Duration? duration) {
     if (id != _playId) return;
     _position = position;
     _length = duration;
     _positionAt = _now();
+    // The hold counts from the sound itself: a streamed answer goes to
+    // the player before its first audio has arrived.
+    final hold = _stopHold;
+    if (hold != null &&
+        hold.id == id &&
+        !hold.placed &&
+        position > Duration.zero) {
+      hold.placed = true;
+      final left = stopWordHold - position;
+      hold.endIn(left.isNegative ? Duration.zero : left);
+    }
   }
 
   /// Seconds into the sound playing now and its length, while both are
@@ -889,6 +1082,80 @@ class VoiceSession {
     await _finish(gen, sound: 'error');
   }
 
+  void _endMatch() {
+    _match?.end();
+    _match = null;
+    _following = false;
+    _noSpeechTimer?.cancel();
+    _noSpeechTimer = null;
+    _readyTimer?.cancel();
+    _readyTimer = null;
+  }
+
+  /// Voice Match's events for the turn of [gen].
+  Future<void> _onMatch(int gen, Map<String, Object?> e) async {
+    if (gen != _gen) return;
+    switch (e['type']) {
+      case 'speaker':
+        onTrace?.call(
+          'voice match: ${e['name'] ?? 'unknown voice'} (${e['score']})',
+        );
+        onSpeaker?.call(e);
+        final name = e['name'];
+        // The same turn, even when the command ended before the voice was
+        // placed: the name goes with its line.
+        if (name is String && name.isNotEmpty && _phase != _Phase.idle) {
+          final color = e['color'];
+          _show(
+            _view.copyWith(
+              speaker: name,
+              speakerColor: color is String ? color : null,
+            ),
+          );
+        }
+      case 'keepalive' when _following && _sending && !_followSent:
+        // Nobody has talked yet, so Ground Control has sent nothing:
+        // Home Assistant gets a little silence so a speech-to-text that gives
+        // up on a quiet stream, like Home Assistant Cloud's, keeps it open.
+        // It isn't the user's speech: the no-speech cancel and the
+        // microphone kept for a lost Voice Match stay as they are.
+        final ms = e['ms'];
+        final samples = 16 * (ms is num ? ms.clamp(10, 100).toInt() : 20);
+        unawaited(link.audio(Uint8List(samples * 2)));
+      case 'turn_start':
+        _noSpeechTimer?.cancel();
+        onTrace?.call('voice match: the user started talking');
+      case 'other_voice' when _following:
+        onTrace?.call('voice match: another voice left out');
+      case 'turn_end':
+        if (!_following) return;
+        onTrace?.call('voice match: the user stopped');
+        await endAudio();
+      case 'end_of_speech':
+        final reason = e['reason'];
+        if (reason == 'other_voice' && !options().matchEndOnOtherVoice) return;
+        if (reason == 'rejected') return;
+        onTrace?.call('voice match: speech ended ($reason)');
+        await endAudio();
+      case 'rejected':
+        onTrace?.call('voice match: not an enrolled voice');
+        _kept = false;
+        final g = ++_gen;
+        await _abandon();
+        await _finish(g, sound: options().matchRejectChime ? 'error' : null);
+    }
+  }
+
+  /// End the command's audio from the kiosk side and keep the turn: Home
+  /// Assistant closes the audio stream and speech to text finishes.
+  Future<bool> endAudio() async {
+    if (!_runActive || _phase != _Phase.listening) return false;
+    onTrace?.call('audio ended by the kiosk');
+    await _closeMic();
+    unawaited(link.audioEnd());
+    return true;
+  }
+
   Future<void> cancel() async {
     if (!busy) return;
     onTrace?.call('turn cancelled');
@@ -902,6 +1169,7 @@ class VoiceSession {
   /// already advanced the generation.
   Future<void> _abandon() async {
     final speaking = _phase == _Phase.speaking || _phase == _Phase.announcing;
+    _endMatch();
     if (_runActive) {
       _runActive = false;
       unawaited(link.request(start: false));
@@ -930,6 +1198,7 @@ class VoiceSession {
     if (gen != _gen) return;
     _cancelWatchdog();
     _runActive = false;
+    _endMatch();
     await _closeMic();
     if (gen != _gen) return;
     final opts = options();
@@ -1026,4 +1295,31 @@ class VoiceSession {
     }
     _show(AssistView.hidden);
   }
+}
+
+/// The start of one sound, during which the stop word is not taken
+/// ([VoiceSession.stopWordHold]).
+class _StopHold {
+  _StopHold(this.id);
+
+  /// The sound it is for.
+  final String id;
+  Timer? _timer;
+
+  /// Whether the wait already counts from the sound's own position.
+  bool placed = false;
+
+  /// Whether the sound has played long enough.
+  bool over = false;
+
+  void endIn(Duration wait) {
+    _timer?.cancel();
+    if (wait <= Duration.zero) {
+      over = true;
+      return;
+    }
+    _timer = Timer(wait, () => over = true);
+  }
+
+  void cancel() => _timer?.cancel();
 }

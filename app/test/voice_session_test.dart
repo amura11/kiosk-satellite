@@ -26,6 +26,14 @@ class _Link implements VoiceLinkPort {
     return true;
   }
 
+  int audioEnds = 0;
+
+  @override
+  Future<bool> audioEnd() async {
+    audioEnds++;
+    return true;
+  }
+
   @override
   Future<bool> finished() async {
     finishedCount++;
@@ -89,8 +97,71 @@ class _Player implements VoicePlayerPort {
   String get lastId => 'snd$_next';
 }
 
+class _MatchTurn implements VoiceMatchTurnPort {
+  _MatchTurn(
+    this.onEvent, {
+    this.onAudio,
+    this.onLost,
+    this.follow = false,
+    this.followup = false,
+  });
+  final void Function(Map<String, Object?> event) onEvent;
+  final void Function(Uint8List pcm)? onAudio;
+  final void Function()? onLost;
+  final bool follow;
+  final bool followup;
+  int fed = 0;
+  bool ended = false;
+
+  @override
+  bool ready = true;
+
+  @override
+  void feed(Uint8List pcm) => fed++;
+
+  @override
+  void end() => ended = true;
+
+  /// The service sending back the user's speech.
+  void user(int value) =>
+      onAudio?.call(Uint8List(2560)..fillRange(0, 2560, value));
+}
+
+class _Match implements VoiceMatchPort {
+  _Match({this.ready = true});
+  final bool ready;
+  final turns = <_MatchTurn>[];
+
+  @override
+  VoiceMatchTurnPort? begin(
+    void Function(Map<String, Object?> event) onEvent, {
+    bool follow = false,
+    bool followup = false,
+    void Function(Uint8List pcm)? onAudio,
+    void Function()? onLost,
+  }) {
+    final t = _MatchTurn(
+      onEvent,
+      onAudio: onAudio,
+      onLost: onLost,
+      follow: follow,
+      followup: followup,
+    )..ready = ready;
+    turns.add(t);
+    return t;
+  }
+}
+
+/// Voice Match saying who is talking only, with the microphone going to
+/// Home Assistant as without it.
+const _live = VoiceSessionOptions(matchEndOnOtherVoice: false);
+
 class _Harness {
-  _Harness({this.options = const VoiceSessionOptions(), FakeAsync? time}) {
+  _Harness({
+    this.options = const VoiceSessionOptions(),
+    FakeAsync? time,
+    this.match,
+  }) {
     session = VoiceSession(
       link: link,
       mic: mic,
@@ -103,9 +174,14 @@ class _Harness {
       onError: (code, message) => errors.add(code),
       onIdle: () => idles++,
       onTrace: (step, {text}) => traces.add((step, text)),
+      voiceMatch: match,
+      onSpeaker: speakers.add,
       now: time == null ? null : () => DateTime(2026).add(time.elapsed),
     );
   }
+
+  final _Match? match;
+  final speakers = <Map<String, Object?>?>[];
 
   VoiceSessionOptions options;
   late final VoiceSession session;
@@ -535,6 +611,202 @@ void main() {
     });
   });
 
+  group('the stop word is not taken while a sound starts', () {
+    const held = VoiceSessionOptions(stopWord: true);
+
+    /// The player reports the sound playing now at [position].
+    void progress(_Harness h, Duration position) =>
+        h.session.onSoundProgress(h.player.lastId, position, null);
+
+    /// Lets the sound playing now go a second and a half in, the hold with
+    /// it, from a first report 250 ms in.
+    void playThrough(FakeAsync async, _Harness h) {
+      progress(h, const Duration(milliseconds: 250));
+      async.elapse(const Duration(milliseconds: 1249));
+      expect(h.session.stopWordHeld, isTrue);
+      async.elapse(const Duration(milliseconds: 1));
+      expect(h.session.stopWordHeld, isFalse);
+    }
+
+    test('an answer is held for a second and a half of its own playing', () {
+      fakeAsync((async) {
+        final h = _Harness(options: held);
+        expect(h.session.stopWordHeld, isFalse);
+        h.session.wake('Okay Nabu');
+        async.elapse(const Duration(seconds: 1));
+        expect(h.session.stopWordHeld, isFalse);
+        h.session.onEvent(VaEvent.ttsEnd, {'url': 'http://ha/tts.mp3'});
+        // A streamed answer: at the player, nothing heard yet. The stop
+        // word listens from the start and is not taken.
+        async.elapse(const Duration(milliseconds: 600));
+        progress(h, Duration.zero);
+        expect(h.stopArmed, [true]);
+        expect(h.session.stopWordHeld, isTrue);
+        async.elapse(const Duration(milliseconds: 250));
+        playThrough(async, h);
+        // Later reports do not hold it again.
+        progress(h, const Duration(seconds: 2));
+        expect(h.session.stopWordHeld, isFalse);
+        h.session.cancel();
+        async.flushMicrotasks();
+        expect(h.session.stopWordHeld, isFalse);
+      });
+    });
+
+    test('a player that never reports holds it for three seconds', () {
+      fakeAsync((async) {
+        final h = _Harness(options: held);
+        h.session.wake('Okay Nabu');
+        async.elapse(const Duration(seconds: 1));
+        h.session.onEvent(VaEvent.ttsEnd, {'url': 'http://ha/tts.mp3'});
+        async.elapse(const Duration(milliseconds: 2999));
+        expect(h.session.stopWordHeld, isTrue);
+        async.elapse(const Duration(milliseconds: 1));
+        expect(h.session.stopWordHeld, isFalse);
+        h.session.cancel();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('a first report past the hold ends it at once', () {
+      fakeAsync((async) {
+        final h = _Harness(options: held);
+        h.session.wake('Okay Nabu');
+        async.elapse(const Duration(seconds: 1));
+        h.session.onEvent(VaEvent.ttsEnd, {'url': 'http://ha/tts.mp3'});
+        async.flushMicrotasks();
+        expect(h.session.stopWordHeld, isTrue);
+        progress(h, const Duration(seconds: 2));
+        expect(h.session.stopWordHeld, isFalse);
+        h.session.cancel();
+        async.flushMicrotasks();
+      });
+    });
+
+    test('nothing is held once the sound is over', () {
+      fakeAsync((async) {
+        final h = _Harness(options: held);
+        h.session.wake('Okay Nabu');
+        async.elapse(const Duration(seconds: 1));
+        h.session.onEvent(VaEvent.intentEnd, {'continue_conversation': '0'});
+        h.session.onEvent(VaEvent.ttsEnd, {'url': 'http://ha/done.mp3'});
+        async.flushMicrotasks();
+        progress(h, const Duration(milliseconds: 250));
+        async.elapse(const Duration(milliseconds: 700));
+        expect(h.session.stopWordHeld, isTrue);
+        h.session.onSoundEnded(h.player.lastId);
+        async.flushMicrotasks();
+        expect(h.session.stopWordHeld, isFalse);
+      });
+    });
+
+    test('every answer of a conversation with follow-ups is held again', () {
+      fakeAsync((async) {
+        final h = _Harness(options: held);
+        h.session.wake('Hey Jarvis');
+        async.elapse(const Duration(seconds: 5));
+        h.session.onEvent(VaEvent.sttEnd, {'text': 'set a timer'});
+        h.session.onEvent(VaEvent.intentEnd, {
+          'conversation_id': 'c1',
+          'continue_conversation': '1',
+        });
+        h.session.onEvent(VaEvent.ttsEnd, {'url': 'http://ha/q.mp3'});
+        async.flushMicrotasks();
+        expect(h.session.stopWordHeld, isTrue);
+        playThrough(async, h);
+        h.session.onSoundEnded(h.player.lastId);
+        async.flushMicrotasks();
+        h.session.onEvent(VaEvent.runEnd, {});
+        async.flushMicrotasks();
+        // The second turn, with no new wake word: nothing plays yet.
+        expect(h.mic.opens, 2);
+        expect(h.session.stopWordHeld, isFalse);
+        async.elapse(const Duration(seconds: 3));
+        h.session.onEvent(VaEvent.sttEnd, {'text': 'five minutes'});
+        h.session.onEvent(VaEvent.intentEnd, {
+          'conversation_id': 'c1',
+          'continue_conversation': '0',
+        });
+        h.session.onEvent(VaEvent.ttsEnd, {'url': 'http://ha/a.mp3'});
+        async.flushMicrotasks();
+        expect(h.player.played.last, 'http://ha/a.mp3');
+        expect(h.session.stopWordHeld, isTrue);
+        async.elapse(const Duration(milliseconds: 400));
+        playThrough(async, h);
+      });
+    });
+
+    test('an announcement is held, its chime is not a sound to stop', () {
+      fakeAsync((async) {
+        final h = _Harness(options: held);
+        h.session.announce(
+          const VoiceAnnouncement(
+            mediaId: 'http://ha/a.mp3',
+            text: 'The laundry is done.',
+            preannounceMediaId:
+                'http://ha/api/assist_satellite/static/preannounce.mp3',
+            startConversation: false,
+          ),
+        );
+        async.flushMicrotasks();
+        expect(h.player.chimes, ['announce']);
+        expect(h.session.stopWordHeld, isFalse);
+        h.session.onSoundEnded(h.player.lastId);
+        async.flushMicrotasks();
+        expect(h.player.played, ['http://ha/a.mp3']);
+        expect(h.session.stopWordHeld, isTrue);
+        playThrough(async, h);
+        h.session.onSoundEnded(h.player.lastId);
+        async.flushMicrotasks();
+        expect(h.session.stopWordHeld, isFalse);
+      });
+    });
+
+    test('start_conversation holds it for the question and for the answer', () {
+      fakeAsync((async) {
+        final h = _Harness(options: held);
+        h.session.announce(
+          const VoiceAnnouncement(
+            mediaId: 'http://ha/q.mp3',
+            text: 'Close the garage?',
+            preannounceMediaId: '',
+            startConversation: true,
+          ),
+        );
+        async.flushMicrotasks();
+        expect(h.player.played, ['http://ha/q.mp3']);
+        expect(h.session.stopWordHeld, isTrue);
+        playThrough(async, h);
+        h.session.onSoundEnded(h.player.lastId);
+        async.flushMicrotasks();
+        expect(h.view.phase, AssistPhase.listening);
+        expect(h.session.stopWordHeld, isFalse);
+        // The reply and its answer.
+        async.elapse(const Duration(seconds: 3));
+        h.session.onEvent(VaEvent.sttEnd, {'text': 'yes'});
+        h.session.onEvent(VaEvent.intentEnd, {'continue_conversation': '0'});
+        h.session.onEvent(VaEvent.ttsEnd, {'url': 'http://ha/ok.mp3'});
+        async.flushMicrotasks();
+        expect(h.player.played.last, 'http://ha/ok.mp3');
+        expect(h.session.stopWordHeld, isTrue);
+        playThrough(async, h);
+      });
+    });
+
+    test('with the stop word off nothing is held', () {
+      fakeAsync((async) {
+        final h = _Harness();
+        h.session.wake('Okay Nabu');
+        async.elapse(const Duration(seconds: 1));
+        h.session.onEvent(VaEvent.ttsEnd, {'url': 'http://ha/tts.mp3'});
+        async.flushMicrotasks();
+        expect(h.session.stopWordHeld, isFalse);
+        h.session.cancel();
+        async.flushMicrotasks();
+      });
+    });
+  });
+
   test('a lingering result panel keeps the stop word armed', () {
     fakeAsync((async) {
       final h = _Harness(
@@ -663,6 +935,255 @@ void main() {
         ),
         'idle',
       );
+    });
+  });
+
+  group('Voice Match', () {
+    void listening(_Harness h, FakeAsync async) {
+      h.session.wake('Okay Nabu');
+      async.flushMicrotasks();
+      h.mic.speak(1, preRoll: true);
+      async.elapse(const Duration(milliseconds: 900));
+      h.session.onEvent(VaEvent.sttStart, {});
+      h.mic.speak(2);
+      async.flushMicrotasks();
+    }
+
+    test('hears what Home Assistant hears and ends with the turn', () {
+      fakeAsync((async) {
+        final h = _Harness(match: _Match(), options: _live);
+        listening(h, async);
+        final turn = h.match!.turns.single;
+        // Not the pre-roll and the chime Home Assistant never gets: the
+        // chime's echo would read as speech.
+        expect(turn.fed, h.link.sent.length);
+        expect(turn.fed, 1);
+        expect(h.speakers, [null]);
+        turn.onEvent({
+          'type': 'speaker',
+          'name': 'Ana',
+          'color': '#56814F',
+          'score': 0.8,
+        });
+        expect(h.speakers.last?['name'], 'Ana');
+        // The overlay names her from then on, the command line included.
+        expect(h.views.last.speaker, 'Ana');
+        expect(h.views.last.speakerColor, '#56814F');
+        h.session.onEvent(VaEvent.sttEnd, {'text': 'hi'});
+        async.flushMicrotasks();
+        expect(h.views.last.command, 'hi');
+        expect(h.views.last.speaker, 'Ana');
+        h.session.onEvent(VaEvent.runEnd, {});
+        async.flushMicrotasks();
+        expect(turn.ended, isTrue);
+      });
+    });
+
+    test('seamless: the pre-roll goes to Voice Match too', () {
+      fakeAsync((async) {
+        final h = _Harness(
+          match: _Match(),
+          options: const VoiceSessionOptions(
+            seamless: true,
+            matchEndOnOtherVoice: false,
+          ),
+        );
+        listening(h, async);
+        expect(h.match!.turns.single.fed, h.link.sent.length);
+        expect(h.match!.turns.single.fed, 2);
+      });
+    });
+
+    test('the speaker stopping ends the audio and keeps the turn', () {
+      fakeAsync((async) {
+        final h = _Harness(match: _Match(), options: _live);
+        listening(h, async);
+        h.match!.turns.single.onEvent({
+          'type': 'end_of_speech',
+          'reason': 'silence',
+        });
+        async.flushMicrotasks();
+        expect(h.link.audioEnds, 1);
+        expect(h.mic.closes, 1);
+        expect(h.link.requests.where((r) => !r.$1), isEmpty);
+        expect(h.session.busy, isTrue);
+      });
+    });
+
+    test('with the switch off, another voice does not end the audio', () {
+      fakeAsync((async) {
+        final off = _Harness(match: _Match(), options: _live);
+        listening(off, async);
+        expect(off.match!.turns.single.follow, isFalse);
+        off.match!.turns.single.onEvent({
+          'type': 'end_of_speech',
+          'reason': 'other_voice',
+        });
+        async.flushMicrotasks();
+        expect(off.link.audioEnds, 0);
+      });
+    });
+
+    test(
+      'follow mode: Home Assistant hears only what Voice Match sends back',
+      () {
+        fakeAsync((async) {
+          final h = _Harness(match: _Match());
+          listening(h, async);
+          final turn = h.match!.turns.single;
+          expect(turn.follow, isTrue);
+          expect(turn.followup, isFalse);
+          // The microphone went to Voice Match, not to Home Assistant.
+          expect(turn.fed, 1);
+          expect(h.link.sent, isEmpty);
+          turn.onEvent({'type': 'turn_start', 't': 0.5});
+          turn.user(7);
+          turn.user(8);
+          h.mic.speak(3);
+          async.flushMicrotasks();
+          expect(h.link.sent.map((p) => p.first), [7, 8]);
+          expect(turn.fed, 2);
+          turn.onEvent({'type': 'turn_end', 't': 2.0});
+          async.flushMicrotasks();
+          expect(h.link.audioEnds, 1);
+          expect(h.mic.closes, 1);
+          expect(h.session.busy, isTrue);
+        });
+      },
+    );
+
+    test(
+      'follow mode: Voice Match gone before the user talked, Home Assistant gets the microphone',
+      () {
+        fakeAsync((async) {
+          final h = _Harness(match: _Match());
+          listening(h, async);
+          final turn = h.match!.turns.single;
+          h.mic.speak(4);
+          async.flushMicrotasks();
+          expect(h.link.sent, isEmpty);
+          turn.onLost!();
+          async.flushMicrotasks();
+          // What it heard so far, then the live microphone.
+          expect(h.link.sent.map((p) => p.first), [2, 4]);
+          h.mic.speak(5);
+          async.flushMicrotasks();
+          expect(h.link.sent.map((p) => p.first), [2, 4, 5]);
+        });
+      },
+    );
+
+    test(
+      'follow mode: Voice Match not answering in time is as good as gone',
+      () {
+        fakeAsync((async) {
+          final h = _Harness(match: _Match(ready: false));
+          listening(h, async);
+          expect(h.link.sent, isEmpty);
+          async.elapse(VoiceSession.matchReadyWait);
+          expect(h.link.sent.map((p) => p.first), [2]);
+        });
+      },
+    );
+
+    test(
+      'follow mode: nobody talking cancels the run, and a late event is ignored',
+      () {
+        fakeAsync((async) {
+          final h = _Harness(match: _Match());
+          listening(h, async);
+          async.elapse(const Duration(seconds: 10));
+          async.flushMicrotasks();
+          // Home Assistant never had audio: ending it would leave it waiting.
+          expect(h.link.audioEnds, 0);
+          expect(h.link.requests.last, (false, ''));
+          expect(h.session.busy, isFalse);
+          h.match!.turns.single.onEvent({'type': 'turn_start', 't': 9.2});
+          async.flushMicrotasks();
+          expect(h.session.busy, isFalse);
+        });
+      },
+    );
+
+    test(
+      'follow mode: keepalives send silence before the user talks, and nobody talking still cancels',
+      () {
+        fakeAsync((async) {
+          final h = _Harness(match: _Match());
+          listening(h, async);
+          final turn = h.match!.turns.single;
+          for (var i = 0; i < 3; i++) {
+            turn.onEvent({'type': 'keepalive', 't': 0.5 * (i + 1), 'ms': 20});
+          }
+          async.flushMicrotasks();
+          // 20 ms of silence each, so Home Assistant Cloud keeps the stream.
+          expect(h.link.sent.length, 3);
+          expect(h.link.sent.every((p) => p.length == 640), isTrue);
+          expect(h.link.sent.every((p) => p.every((b) => b == 0)), isTrue);
+          async.elapse(const Duration(seconds: 10));
+          async.flushMicrotasks();
+          // The silence isn't the user's speech: the run is still cancelled.
+          expect(h.link.audioEnds, 0);
+          expect(h.session.busy, isFalse);
+        });
+      },
+    );
+
+    test(
+      'follow mode: Voice Match gone after keepalives, Home Assistant still gets the microphone',
+      () {
+        fakeAsync((async) {
+          final h = _Harness(match: _Match());
+          listening(h, async);
+          final turn = h.match!.turns.single;
+          turn.onEvent({'type': 'keepalive', 't': 0.5, 'ms': 20});
+          h.mic.speak(4);
+          async.flushMicrotasks();
+          turn.onLost!();
+          async.flushMicrotasks();
+          // The silence, then what the microphone heard from the start.
+          expect(h.link.sent.skip(1).map((p) => p.first), [2, 4]);
+        });
+      },
+    );
+
+    test(
+      'a voice that is not enrolled ends the turn, quietly or with a chime',
+      () {
+        fakeAsync((async) {
+          final quiet = _Harness(match: _Match());
+          listening(quiet, async);
+          quiet.match!.turns.single.onEvent({'type': 'rejected', 'score': 0.2});
+          async.flushMicrotasks();
+          expect(quiet.link.requests.last, (false, ''));
+          expect(quiet.session.busy, isFalse);
+          expect(quiet.player.chimes, ['wake']);
+          expect(quiet.match!.turns.single.ended, isTrue);
+
+          final loud = _Harness(
+            match: _Match(),
+            options: const VoiceSessionOptions(matchRejectChime: true),
+          );
+          listening(loud, async);
+          loud.match!.turns.single.onEvent({'type': 'rejected', 'score': 0.2});
+          async.flushMicrotasks();
+          expect(loud.player.chimes, ['wake', 'error']);
+        });
+      },
+    );
+
+    test('events from a turn that is over are ignored', () {
+      fakeAsync((async) {
+        final h = _Harness(match: _Match());
+        listening(h, async);
+        final first = h.match!.turns.single;
+        h.session.onEvent(VaEvent.sttEnd, {'text': 'hi'});
+        h.session.onEvent(VaEvent.runEnd, {});
+        async.flushMicrotasks();
+        first.onEvent({'type': 'turn_end', 't': 1.0});
+        async.flushMicrotasks();
+        expect(h.link.audioEnds, 0);
+      });
     });
   });
 }

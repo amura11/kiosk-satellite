@@ -257,6 +257,7 @@ void main() {
       ),
     );
     stub('evalJs', '"https://ha.local/lovelace/home"');
+    stub('getDashboardState', {'currentUrl': 'https://ha.local/lovelace/home'});
     stub('screenshot', base64Encode([1, 2, 3]));
     for (final name in [
       'screenOn',
@@ -278,6 +279,11 @@ void main() {
       'showMusicAssistant',
       'openMusicLibrary',
       'hideCameraView',
+      'hideCalendar',
+      'hideMusicLibrary',
+      'hideAlarms',
+      'hideAppLauncher',
+      'hideOverlayPage',
       'showCameraView',
       'haNavigate',
       'installUpdate',
@@ -727,6 +733,40 @@ void main() {
     },
   );
 
+  test('Close overlays closes every overlay and leaves the page', () async {
+    var screensaver = false;
+    commands.register(
+      Command(
+        name: 'isScreensaverActive',
+        description: 'stub',
+        handler: (_) async => CommandResult.ok(screensaver),
+      ),
+    );
+    await attach();
+    executed.clear();
+    await surface.handleCommand('close_overlays', null);
+    final closed = [for (final e in executed) e.$1];
+    expect(
+      closed,
+      containsAll([
+        'hideCameraView',
+        'hideCalendar',
+        'hideMusicLibrary',
+        'hideAlarms',
+        'hideAppLauncher',
+        'hideOverlayPage',
+      ]),
+    );
+    // No screensaver up: the screen is left as it is.
+    expect(closed, isNot(contains('stopScreensaver')));
+    expect(closed, isNot(contains('loadStartUrl')));
+
+    screensaver = true;
+    executed.clear();
+    await surface.handleCommand('close_overlays', null);
+    expect(executed.map((e) => e.$1), contains('stopScreensaver'));
+  });
+
   test('Now Playing follows the view and brings it up', () async {
     commands.register(
       Command(
@@ -885,6 +925,37 @@ void main() {
       );
     });
 
+    test('go with Enable timers, with Mute timers and the actions', () async {
+      // Issue #1508: a kiosk that leaves timers to the user's own setup
+      // lists none of them.
+      await settings.set(defs.voiceRuntime, 'native');
+      await settings.set(defs.voiceEnabled, true);
+      const timerEntities = {'vs_timers', 'vs_next_timer', 'vs_mute_timers'};
+      const timerActions = {
+        'vs_start_timer',
+        'vs_list_timers',
+        'vs_pause_timer',
+        'vs_resume_timer',
+        'vs_cancel_timer',
+        'vs_add_time',
+        'vs_remove_time',
+      };
+      Future<Set<String>> ids() async => {
+        for (final d in await surface.build()) '${d['objectId']}',
+      };
+      Set<String> actions() => {
+        for (final s in surface.buildServices()) '${s['name']}',
+      };
+      expect(await ids(), containsAll(timerEntities));
+      expect(actions(), containsAll(timerActions));
+      await settings.set(defs.timersEnabled, false);
+      expect((await ids()).intersection(timerEntities), isEmpty);
+      expect(actions().intersection(timerActions), isEmpty);
+      // The rest of Voice Satellite stays.
+      expect(await ids(), contains('vs_mute'));
+      expect(actions(), contains('vs_cancel'));
+    });
+
     test('count pending timers and show the soonest running end', () async {
       await settings.set(defs.voiceRuntime, 'native');
       await settings.set(defs.voiceEnabled, true);
@@ -1014,6 +1085,7 @@ void main() {
         'notifications_dismiss_all',
         'reload',
         'load_start_url',
+        'close_overlays',
         'clear_cache',
         'restart',
         'bring_to_front',
@@ -1050,6 +1122,7 @@ void main() {
         'screensaver',
         'screensaver_schedule',
         'screensaver_widgets',
+        'now_playing_alongside_screensaver',
         'hold_mode',
         'dashboard_rotation',
         'camera_enabled',
@@ -1342,6 +1415,16 @@ void main() {
     expect(settings.get(defs.screensaverWidgetsEnabled), isTrue);
   });
 
+  test(
+    'the alongside switch shows Now Playing beside the screensaver',
+    () async {
+      await surface.handleCommand('now_playing_alongside_screensaver', true);
+      expect(settings.get(defs.sendspinFullscreenSplit), isTrue);
+      await surface.handleCommand('now_playing_alongside_screensaver', false);
+      expect(settings.get(defs.sendspinFullscreenSplit), isFalse);
+    },
+  );
+
   test('the schedule switch turns scheduled screensavers on and off', () async {
     await surface.handleCommand('screensaver_schedule', true);
     expect(settings.get(defs.screensaverScheduleEnabled), isTrue);
@@ -1596,6 +1679,15 @@ void main() {
     expect(entity['unit'], '°C');
     expect(entity['category'], 2);
     expect(entity['accuracyDecimals'], 1);
+  });
+
+  test('a closed page clears the current page and dashboard view', () async {
+    await surface.build();
+    await attach();
+    pushed.clear();
+    bus.publish(const UrlChanged(url: ''));
+    await pumpEventQueue();
+    expect(pushed, containsAll([('url', null), ('dashboard_view', null)]));
   });
 
   test('attach pushes an initial snapshot from the live sources', () async {

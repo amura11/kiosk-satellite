@@ -13,6 +13,7 @@ import '../../core/events.dart';
 import '../../ui/mdi_icon.dart';
 import 'fleet_plugin_host.dart';
 import 'plugin_directory.dart';
+import 'plugin_players.dart';
 import 'plugin_repository.dart';
 import '../home_assistant/plugin_ha_socket.dart';
 import '../sendspin/plugin_ma_socket.dart';
@@ -36,6 +37,22 @@ class PluginWindow {
 /// A native overlay a plugin shows through SDK 1 showOverlay. Sizes and the
 /// inset are in dp, or [wrap] and [fill]. [measured] is the wrapped view's
 /// size in physical pixels once Android has measured it.
+/// Where a native overlay draws. The dashboard layer is in the kiosk plane,
+/// under the KS pages and views. The views layer is over every page and
+/// view and hides under the screensaver and the menu. The top layer is the
+/// voice overlay's slot, over the screensaver and the menu.
+enum PluginOverlayLayer {
+  dashboard,
+  views,
+  top;
+
+  static PluginOverlayLayer parse(Object? value) => switch (value) {
+    'views' => views,
+    'top' => top,
+    _ => dashboard,
+  };
+}
+
 class PluginNativeOverlay {
   const PluginNativeOverlay({
     required this.pluginId,
@@ -47,7 +64,7 @@ class PluginNativeOverlay {
     required this.height,
     required this.insets,
     required this.closeOnBack,
-    required this.onTop,
+    required this.layer,
     required this.touchable,
     this.offset = Offset.zero,
     this.closeOnOutsideTouch = false,
@@ -75,7 +92,7 @@ class PluginNativeOverlay {
   /// Where the overlay moves from its anchored place, in dp.
   final Offset offset;
   final bool closeOnBack;
-  final bool onTop;
+  final PluginOverlayLayer layer;
   final bool touchable;
 
   /// A touch outside the overlay closes it. With [passOutsideTouch] that
@@ -106,7 +123,7 @@ class PluginNativeOverlay {
     insets: insets,
     offset: offset,
     closeOnBack: closeOnBack,
-    onTop: onTop,
+    layer: layer,
     touchable: touchable,
     closeOnOutsideTouch: closeOnOutsideTouch,
     passOutsideTouch: passOutsideTouch,
@@ -457,6 +474,7 @@ class PluginManager extends Manager implements FleetPluginHost {
     }
 
     screensavers.addListener(publishScreensaverOptions);
+    PluginPlayers.published.addListener(_publishLibraryOptions);
     installed.addListener(publishScreensaverOptions);
     // The Overview's plugin tiles, apart from the readings and charts a
     // plugin page follows: those move often, the tiles rarely.
@@ -496,6 +514,7 @@ class PluginManager extends Manager implements FleetPluginHost {
           _setOverlays(data['id'] as String, const []);
           _setContentInsets(data['id'] as String, null);
           _setSetup(data['id'] as String, null);
+          _setPlayers(data['id'] as String, '', const []);
           _hostReads.open(call.arguments as Map);
           // A new session has not heard that its settings page is open.
           if (_pageViewers.containsKey(data['id'])) {
@@ -515,6 +534,7 @@ class PluginManager extends Manager implements FleetPluginHost {
             _setOverlays(data['id'] as String, const []);
             _setContentInsets(data['id'] as String, null);
             _setSetup(data['id'] as String, null);
+            _setPlayers(data['id'] as String, '', const []);
           }
         case 'cameraOpen':
           return camera == null
@@ -595,6 +615,47 @@ class PluginManager extends Manager implements FleetPluginHost {
             _setScreensavers(
               data['id'] as String,
               data['screensavers'] as List,
+            );
+          }
+        case 'players':
+          final data = call.arguments as Map;
+          if (_runtimeSessions[data['id']] == data['session'] &&
+              data['session'] != null) {
+            _setPlayers(
+              data['id'] as String,
+              data['session'] as String,
+              data['players'] as List,
+            );
+          }
+        case 'playerState':
+          final data = call.arguments as Map;
+          if (_runtimeSessions[data['id']] == data['session'] &&
+              data['session'] != null) {
+            final pick = PluginPlayers.pickOf(
+              data['id'] as String,
+              '${data['key']}',
+            );
+            final raw = data['state'];
+            final state = raw is Map
+                ? <String, Object?>{
+                    for (final e in raw.entries) '${e.key}': e.value,
+                  }
+                : null;
+            if (state == null) {
+              PluginPlayers.states.remove(pick);
+            } else {
+              PluginPlayers.states[pick] = state;
+            }
+            bus.publish(PluginPlayerStateChanged(pick, state));
+          }
+        case 'playerQueue':
+          final data = call.arguments as Map;
+          if (_runtimeSessions[data['id']] == data['session'] &&
+              data['session'] != null) {
+            bus.publish(
+              PluginPlayerQueueChanged(
+                PluginPlayers.pickOf(data['id'] as String, '${data['key']}'),
+              ),
             );
           }
         case 'contentInsets':
@@ -775,7 +836,12 @@ class PluginManager extends Manager implements FleetPluginHost {
             'command': entity['command'],
           });
         }
-        if (!const ['light', 'select', 'switch'].contains(entity['type'])) {
+        if (!const [
+          'light',
+          'select',
+          'switch',
+          'number',
+        ].contains(entity['type'])) {
           throw StateError('Plugin entity is read-only');
         }
         if (entity['type'] == 'select' &&
@@ -784,6 +850,12 @@ class PluginManager extends Manager implements FleetPluginHost {
         }
         if (entity['type'] == 'switch' && p['value'] is! bool) {
           throw ArgumentError('Switch command must be boolean');
+        }
+        if (entity['type'] == 'number') {
+          final value = p['value'];
+          if (value is! num || !value.isFinite) {
+            throw ArgumentError('Number command must be a finite number');
+          }
         }
         return update('entityCommand', {
           'id': entity['pluginId'],
@@ -794,7 +866,8 @@ class PluginManager extends Manager implements FleetPluginHost {
       },
       const {
         'objectId': 'Plugin entity object ID',
-        'value': 'Light command map, select option string or switch boolean',
+        'value':
+            'Light command map, select option string, switch boolean or number',
       },
     );
     register(
@@ -995,6 +1068,7 @@ class PluginManager extends Manager implements FleetPluginHost {
       const {
         'id': 'Plugin ID',
         'command': 'Command ID from the plugin manifest',
+        'args': 'Optional list of strings the plugin receives as args',
       },
     );
     // Plugin startup must not hold up the dashboard or remote administration.
@@ -1546,6 +1620,18 @@ class PluginManager extends Manager implements FleetPluginHost {
     };
   }
 
+  /// The Music Library's Source lists the libraries plugin players offer.
+  void _publishLibraryOptions() {
+    if (!_disposed) bus.publish(SettingOptionsChanged(defs.librarySource.key));
+  }
+
+  /// A plugin's published players, named after the plugin for the picker.
+  void _setPlayers(String id, String session, List value) {
+    final name =
+        installed.value.where((p) => p['id'] == id).firstOrNull?['name'] ?? id;
+    PluginPlayers.setPlugin(id, session, '$name', value);
+  }
+
   void _setScreensavers(String id, List value) {
     final next = {...screensavers.value}
       ..removeWhere((_, item) => item['pluginId'] == id);
@@ -1634,6 +1720,7 @@ class PluginManager extends Manager implements FleetPluginHost {
       if (!enabled.value || item['running'] != true) {
         _runtimeSessions.remove(item['id']);
         _setContentInsets(item['id'] as String, null);
+        _setPlayers(item['id'] as String, '', const []);
       }
       _setCharts(
         item['id'] as String,
@@ -1650,6 +1737,12 @@ class PluginManager extends Manager implements FleetPluginHost {
     }
     for (final id in statusTiles.value.keys.toList()) {
       if (!items.any((p) => p['id'] == id)) _setStatusTiles(id, const []);
+    }
+    for (final id
+        in PluginPlayers.published.value.values
+            .map((p) => p.pluginId)
+            .toSet()) {
+      if (!items.any((p) => p['id'] == id)) _setPlayers(id, '', const []);
     }
     for (final id
         in screensavers.value.values
@@ -1708,7 +1801,7 @@ class PluginManager extends Manager implements FleetPluginHost {
                 (raw['offsetY'] as num? ?? 0).toDouble(),
               ),
               closeOnBack: raw['closeOnBack'] == true,
-              onTop: raw['onTop'] == true,
+              layer: PluginOverlayLayer.parse(raw['layer']),
               touchable: raw['touchable'] != false,
               closeOnOutsideTouch: raw['closeOnOutsideTouch'] == true,
               passOutsideTouch: raw['passOutsideTouch'] == true,
@@ -1752,6 +1845,10 @@ class PluginManager extends Manager implements FleetPluginHost {
   /// The overlay a back press closes: the topmost that allows it.
   PluginNativeOverlay? get backOverlay =>
       overlays.value.where((o) => o.closeOnBack).lastOrNull;
+
+  /// The topmost overlay of [layer] that back closes.
+  PluginNativeOverlay? backOverlayIn(PluginOverlayLayer layer) =>
+      overlays.value.where((o) => o.closeOnBack && o.layer == layer).lastOrNull;
 
   /// Back closed an overlay. It goes at once, and the plugin hears
   /// overlay.closed unless it replaced the overlay in the meantime.
@@ -1836,6 +1933,7 @@ class PluginManager extends Manager implements FleetPluginHost {
                 'text_sensor' => 'mdi:text-box-outline',
                 'binary_sensor' => 'mdi:checkbox-marked-circle-outline',
                 'switch' => 'mdi:toggle-switch',
+                'number' => 'mdi:ray-vertex',
                 _ => 'mdi:form-select',
               },
             },
@@ -1852,6 +1950,7 @@ class PluginManager extends Manager implements FleetPluginHost {
             'text_sensor',
             'binary_sensor',
             'select',
+            'number',
           ].contains(previous['type']) &&
           !nextEntities.any((e) => e['objectId'] == previous['objectId'])) {
         bus.publish(
@@ -1928,6 +2027,7 @@ class PluginManager extends Manager implements FleetPluginHost {
     charts.dispose();
     statusTiles.dispose();
     setup.dispose();
+    PluginPlayers.published.removeListener(_publishLibraryOptions);
     screensavers.dispose();
     installed.dispose();
     windows.dispose();

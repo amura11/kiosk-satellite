@@ -1,0 +1,23 @@
+{
+  "@@locale": "zh_CN",
+  "settingGroundControlEnabledTitle": "启用 Ground Control",
+  "settingGroundControlEnabledDescription": "连接到 Kiosk Satellite Ground Control，它在高性能设备上运行 Voice Match。",
+  "settingGroundControlAddressTitle": "地址",
+  "settingGroundControlAddressDescription": "留空以在网络中查找 Ground Control。如果 Ground Control 在其他网络中，请输入地址。",
+  "groundControlLooking": "正在网络中查找 Ground Control。",
+  "groundControlApp": "Ground Control 应用",
+  "groundControlFeatures": "功能",
+  "settingGroundControlVoiceMatchTitle": "Voice Match",
+  "groundControlVisionMatch": "Vision Match",
+  "groundControlVisionMatchDescription": "使用此设备的摄像头进行人脸识别。",
+  "groundControlComingSoon": "即将推出",
+  "settingGroundControlVoiceMatchFeaturesDescription": "Recognition、Trimming 和 Isolation。",
+  "groundControlWaitingApproval": "等待批准",
+  "groundControlApproveHint": "请在 Ground Control 应用的 Kiosks 页面批准此信息亭。",
+  "groundControlDeclined": "已拒绝",
+  "groundControlDeclinedHint": "此信息亭已在 Ground Control 应用中被拒绝。请在 Kiosks 页面批准它。",
+  "groundControlNotAccepted": "未被接受",
+  "groundControlUnsignedBuild": "此版本的 Kiosk Satellite 无法连接到 Ground Control。",
+  "groundControlArchitecture": "架构",
+  "groundControlRunsOn": "运行于"
+}

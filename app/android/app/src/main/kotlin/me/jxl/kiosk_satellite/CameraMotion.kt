@@ -694,6 +694,8 @@ class CameraMotion(
                     { event, message, cause -> CameraDiagnostics.record(listenerId, event, message,
                         failure = cause != null, cause = cause) },
                     onvif = onvif,
+                    snapshot = if (onvif != null) CameraOnvifSnapshot(if (auth) user else null, password,
+                        { done -> onvifSnapshot(generation, done) }) else null,
                     tls = tls,
                     streamName = deviceName,
                     audioEnabled = config["audio"] == true,
@@ -724,6 +726,28 @@ class CameraMotion(
             result.success(rtspStatus())
         }
         bind(0)
+    }
+
+    /** One JPEG for the ONVIF snapshot URI (issue #1506). While a viewer
+     *  streams, it is the next video frame, so the still matches the
+     *  stream and the camera does no extra work. Otherwise Dart captures
+     *  one, with the checks every snapshot goes through. Any thread. */
+    private fun onvifSnapshot(generation: Int, done: (ByteArray?, String?) -> Unit) {
+        mainHandler.post {
+            val encoder = rtspEncoder
+            when {
+                disposed || rtspGeneration != generation -> done(null, "The camera stream is closed")
+                encoder != null -> encoder.snapshot(done)
+                else -> rtspChannel.invokeMethod("snapshot", null, object : MethodChannel.Result {
+                    override fun success(result: Any?) {
+                        val bytes = result as? ByteArray
+                        if (bytes != null && bytes.isNotEmpty()) done(bytes, null) else done(null, "The camera returned no image")
+                    }
+                    override fun error(code: String, message: String?, details: Any?) = done(null, message ?: code)
+                    override fun notImplemented() = done(null, "The app is not ready for snapshots")
+                })
+            }
+        }
     }
 
     private fun startOnvifDiscovery(deviceId: String, port: Int, deviceName: String, tls: Boolean) {
@@ -1030,8 +1054,14 @@ class CameraMotion(
         // forever (see DeviceCamera's hasCamera comment, issue #193).
         CameraEnumeration.facings(context) { facings ->
             if (session != mySession) return@facings
-            if (facings.isEmpty()) sink.error("camera", NO_CAMERA_MESSAGE, null)
-            else bindProvider(facing, sink, mySession, diagnosticId)
+            if (facings.isEmpty()) {
+                sink.error("camera", NO_CAMERA_MESSAGE, null)
+                return@facings
+            }
+            // Every failed open on a HAL1 camera leaks two threads for good,
+            // so the app restarts before they run out.
+            LegacyCameraShim.restartIfSpent(context)
+            bindProvider(facing, sink, mySession, diagnosticId)
         }
     }
 
@@ -1131,6 +1161,9 @@ class CameraMotion(
                     lastProcessedNs = 0L
                     analyzeFromNs = 0L
                     resetVisionGate()
+                    // The shim's thread exists only once a camera is open, so
+                    // the first frame is the earliest a HAL1 device shows.
+                    LegacyCameraShim.of(context).markIfShim()
                     Log.i(TAG, "camera $cameraId first frame ${image.width}x${image.height}, " +
                         "capture fallback=$captureLevel, RTSP=$boundRtsp")
                     CameraDiagnostics.record(diagnosticId, if (captureLevel > 0) "analysis recovered" else "first analysis frame", "camera=$cameraId, " +

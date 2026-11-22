@@ -953,6 +953,86 @@ void main() {
       expect(intercom.call, isNull);
     });
 
+    test('the caller\'s buttons are kept, three at most', () {
+      final actions = IntercomManager.callActions([
+        {'id': 'gate', 'label': 'Open gate', 'icon': 'mdi:gate-open'},
+        {'id': '', 'label': 'No id'},
+        {'id': 'nolabel', 'label': ' '},
+        {'id': 'gate', 'label': 'Same id'},
+        'not a map',
+        {'id': 'door', 'label': 'x' * 60},
+        {'id': 'light', 'label': 'Porch light'},
+        {'id': 'fourth', 'label': 'One too many'},
+      ]);
+      expect(actions.map((a) => a['id']), ['gate', 'door', 'light']);
+      expect(actions.first['icon'], 'mdi:gate-open');
+      expect(actions.first['state'], 'idle');
+      expect((actions[1]['label'] as String).length, 40);
+      expect(actions[2].containsKey('icon'), isFalse);
+      expect(IntercomManager.callActions('nope'), isEmpty);
+    });
+
+    test('a tap on a caller\'s button goes back to the caller', () async {
+      IntercomManager.actionResultFor = const Duration(milliseconds: 60);
+      addTearDown(
+        () => IntercomManager.actionResultFor = const Duration(seconds: 3),
+      );
+      await build();
+      answers['POST /api/intercom/call/c1'] = (_) => {'ok': true};
+      await commands.execute('intercomIncoming', {
+        'call': 'c1',
+        'kind': 'call',
+        'from': {'id': 'door', 'name': 'Front door', 'port': 2324},
+        'address': '192.168.1.70',
+        'token': tokenFor('c1'),
+        'actions': [
+          {'id': 'gate', 'label': 'Open gate', 'icon': 'mdi:gate-open'},
+        ],
+      });
+      List actions() => (intercom.status()['call'] as Map)['actions'] as List;
+      expect(actions().single['label'], 'Open gate');
+
+      // While it rings.
+      final r = await commands.execute('intercomAction', {'id': 'gate'});
+      expect(r.ok, isTrue, reason: r.error);
+      final told = sent.lastWhere((r) => r.url.path.endsWith('/call/c1'));
+      expect(jsonDecode(told.body), {'action': 'custom', 'id': 'gate'});
+      expect(told.headers['Authorization'], startsWith('Bearer '));
+      expect(intercom.state, 'ringing');
+      expect(actions().single['state'], 'done');
+      await settle(100);
+      expect(actions().single['state'], 'idle');
+
+      // Through the call, and a caller that refuses it.
+      await commands.execute('intercomAnswer', const {});
+      expect(intercom.state, 'in_call');
+      answers.remove('POST /api/intercom/call/c1');
+      final refused = await commands.execute('intercomAction', {'id': 'gate'});
+      expect(refused.ok, isFalse);
+      expect(actions().single['state'], 'failed');
+      expect(intercom.state, 'in_call');
+
+      final unknown = await commands.execute('intercomAction', {'id': 'nope'});
+      expect(unknown.ok, isFalse);
+    });
+
+    test('a broadcast and a kiosk calling out carry no buttons', () async {
+      await build();
+      await commands.execute('intercomIncoming', {
+        'call': 'b1',
+        'kind': 'broadcast',
+        'from': {'id': 'kitchen', 'name': 'Kitchen', 'port': 2324},
+        'address': '192.168.1.70',
+        'token': tokenFor('b1'),
+        'actions': [
+          {'id': 'gate', 'label': 'Open gate'},
+        ],
+      });
+      expect((intercom.status()['call'] as Map).containsKey('actions'), false);
+      final r = await commands.execute('intercomAction', {'id': 'gate'});
+      expect(r.ok, isFalse);
+    });
+
     test('the roster and the call card report the screen they fill', () async {
       await build();
       final views = <bool>[];
@@ -1036,6 +1116,53 @@ void main() {
         expect(stoppedSounds(), ['intercom-ring']);
         await settle(60);
         expect(ringSounds(), hasLength(2));
+      },
+    );
+
+    test(
+      'the ring plays at the ring volume, not the notification volume',
+      () async {
+        await build();
+        await settings.set(defs.notificationsVolume, 0.2);
+        await settings.set(defs.intercomRingVolume, 0.45);
+        Future<void> incoming(String call) =>
+            commands.execute('intercomIncoming', {
+              'call': call,
+              'kind': 'call',
+              'from': {'id': 'kitchen', 'name': 'Kitchen', 'port': 2324},
+              'address': '192.168.1.70',
+              'token': tokenFor(call),
+            });
+        // The built-in ring through the native sink.
+        await incoming('v1');
+        await settle(20);
+        final ring = audioArgs.firstWhere((a) => a.$1 == 'ring').$2 as Map;
+        expect(ring['volume'], 0.45);
+        await commands.execute('intercomDecline', const {});
+        await settle(250);
+        // A picked sound through the chime player.
+        await pickRingSound();
+        await incoming('v2');
+        await settle(20);
+        expect(ringSounds().first['volume'], 0.45);
+      },
+    );
+
+    test(
+      'an update rings at the notification volume it rang at before',
+      () async {
+        await build(prefs: {'ks.notifications.volume': 0.3});
+        expect(settings.get(defs.intercomRingVolume), 0.3);
+        // Written once: the two volumes go their own ways from here.
+        await settings.set(defs.notificationsVolume, 0.9);
+        expect(settings.get(defs.intercomRingVolume), 0.3);
+        await build(
+          prefs: {
+            'ks.notifications.volume': 0.3,
+            'ks.intercom.ring_volume': 0.8,
+          },
+        );
+        expect(settings.get(defs.intercomRingVolume), 0.8);
       },
     );
 
@@ -1332,6 +1459,87 @@ void main() {
         expect(intercom.call?.reason, 'cancelled');
       },
     );
+
+    test('the Call buttons go with the call and a tap runs here', () async {
+      await build();
+      await settle();
+      final ran = <Map<String, Object?>>[];
+      intercom.runAction = (action) async {
+        ran.add(action);
+        return action['type'] == 'refresh'
+            ? const CommandResult.fail('nothing to refresh')
+            : const CommandResult.ok();
+      };
+      await settings.set(
+        defs.intercomCallButtons,
+        jsonEncode([
+          {
+            'label': 'Open gate',
+            'icon': 'mdi:gate-open',
+            'action': {
+              'type': 'ha_service',
+              'domain': 'lock',
+              'service': 'unlock',
+              'entityId': 'lock.gate',
+            },
+          },
+          {
+            'label': '',
+            'action': {'type': 'refresh'},
+          },
+          {'label': 'No action', 'action': <String, Object?>{}},
+          {
+            'label': 'Refresh',
+            'action': {'type': 'refresh'},
+          },
+        ]),
+      );
+      answers['POST /api/intercom/call'] = (_) => {'status': 'ringing'};
+      await commands.execute('intercomCall', {'id': 'kitchen'});
+      final req = sent.lastWhere((r) => r.url.path == '/api/intercom/call');
+      final body = jsonDecode(req.body) as Map;
+      expect(body['actions'], [
+        {'id': '0', 'label': 'Open gate', 'icon': 'mdi:gate-open'},
+        {'id': '3', 'label': 'Refresh'},
+      ]);
+      final callId = '${body['call']}';
+      // An edit while the call rings leaves this call's buttons alone.
+      await settings.set(defs.intercomCallButtons, '[]');
+
+      final tap = await commands.execute('intercomSignal', {
+        'call': callId,
+        'action': 'custom',
+        'id': '0',
+        'token': tokenFor(callId),
+      });
+      expect(tap.ok, isTrue, reason: tap.error);
+      expect(ran.single['entityId'], 'lock.gate');
+      final failed = await commands.execute('intercomSignal', {
+        'call': callId,
+        'action': 'custom',
+        'id': '3',
+        'token': tokenFor(callId),
+      });
+      expect(failed.ok, isFalse);
+      final unknown = await commands.execute('intercomSignal', {
+        'call': callId,
+        'action': 'custom',
+        'id': '1',
+        'token': tokenFor(callId),
+      });
+      expect(unknown.ok, isFalse);
+      expect(ran, hasLength(2));
+      expect(intercom.state, 'calling');
+    });
+
+    test('a call without Call buttons sends no actions', () async {
+      await build();
+      await settle();
+      answers['POST /api/intercom/call'] = (_) => {'status': 'ringing'};
+      await commands.execute('intercomCall', {'id': 'kitchen'});
+      final req = sent.lastWhere((r) => r.url.path == '/api/intercom/call');
+      expect((jsonDecode(req.body) as Map).containsKey('actions'), isFalse);
+    });
 
     test('busy, do not disturb and off end the call with the reason', () async {
       await build();
@@ -2126,9 +2334,11 @@ void main() {
         };
         answers['GET /a.mp3'] = (_) => http.Response.bytes([9], 200);
         final interactions = <bool>[];
-        bus.on<VoiceInteractionChanged>().listen(
-          (e) => interactions.add(e.active),
-        );
+        final reasons = <String>{};
+        bus.on<VoiceInteractionChanged>().listen((e) {
+          interactions.add(e.active);
+          reasons.add(e.reason);
+        });
         expect(
           await surface.handleService('announce', {
             'message': 'Dinner is ready',
@@ -2150,6 +2360,9 @@ void main() {
         expect(audioCalls, contains('stop'));
         expect(intercom.state, 'idle');
         expect(interactions, [true, false]);
+        // A reason of its own, which the screensaver stays up under
+        // (issue #1441).
+        expect(reasons, {VoiceInteractionChanged.announcementReason});
       },
     );
 
@@ -2273,6 +2486,43 @@ void main() {
         await commands.execute('intercomDismiss', const {});
       }
     });
+
+    test(
+      'the media share of adaptive volume lowers the media fader only',
+      () async {
+        await build(
+          prefs: {
+            'ks.ha.url': 'http://ha.local:8123',
+            'ks.ha.token': 'tkn',
+            'ks.audio.media_volume': 80,
+          },
+        );
+        answers['GET /a.mp3'] = (_) => http.Response.bytes([9], 200);
+        bus.publish(
+          const AdaptiveVolumeChanged(
+            noise: -55,
+            assistant: 1,
+            media: 0.5,
+            intercom: 1,
+          ),
+        );
+        await settle(0);
+        // The fader under the room's share, then the action's own volume,
+        // which the room leaves alone.
+        for (final (volume, gain) in [(0.0, 0.16), (0.6, 0.36)]) {
+          final r = await commands.execute('announce', {
+            'url': 'http://sounds.local/a.mp3',
+            'volume': volume,
+            'chime': false,
+          });
+          expect(r.ok, isTrue, reason: r.error);
+          final start = audioArgs.lastWhere((a) => a.$1 == 'start').$2 as Map;
+          expect((start['volume'] as num).toDouble(), closeTo(gain, 1e-9));
+          await commands.execute('intercomHangup', const {});
+          await commands.execute('intercomDismiss', const {});
+        }
+      },
+    );
 
     test(
       'a voice Home Assistant cannot speak falls back to the engine',

@@ -13,6 +13,7 @@ import '../device_camera/camera_resolutions.dart';
 import '../kiosk/drawer_items.dart';
 import '../wake_word/pryon/pryon_catalog.dart';
 import 'definitions.dart';
+import '../plugins/plugin_players.dart';
 
 export 'definitions.dart';
 
@@ -138,7 +139,7 @@ class SettingsManager extends Manager {
       def.key == cameraRtspResolution.key
       ? _cameraStreamResolutions ?? const []
       : def.key == voiceAmazonLocale.key
-      ? ['', ...PryonCatalog.locales]
+      ? PryonCatalog.locales
       : def.key == micEchoCancellationMethod.key
       ? _echoMethodOptions()
       : _realtimeOptions(def) ??
@@ -154,11 +155,23 @@ class SettingsManager extends Manager {
                 ...pluginVoiceSkins().keys,
                 if (isPluginVoiceSkin(get(def))) get(def) as String,
               },
+              if (def.key == librarySource.key) ...{
+                ...pluginLibraries().keys,
+                if (PluginPlayers.isPick(get(def) as String))
+                  get(def) as String,
+              },
             ];
+
+  /// The Music Library sources running plugins offer, by their player's
+  /// pick, named the way the Player pick names them.
+  Map<String, String> pluginLibraries() => {
+    for (final player in PluginPlayers.published.value.values)
+      if (player.library) player.pick: player.name,
+  };
   String? optionLabel(SettingDef<Object> def, String value) =>
       def.key == cameraRtspResolution.key
       ? cameraResolutionLabel(value)
-      : def.key == voiceAmazonLocale.key && value.isNotEmpty
+      : def.key == voiceAmazonLocale.key
       ? PryonCatalog.localeLabel(value)
       // Model ids read as they are; voices are names.
       : _realtimeLists[def.key] != null && value.isNotEmpty
@@ -175,6 +188,15 @@ class SettingsManager extends Manager {
                 ? pluginVoiceSkins()[value] ??
                       (isPluginVoiceSkin(value)
                           ? 'Unavailable plugin skin'
+                          : null)
+                : def.key == librarySource.key
+                ? pluginLibraries()[value] ??
+                      // A plugin that is not running: the name its player
+                      // was picked under, else the plugin and the key.
+                      (PluginPlayers.isPick(value)
+                          ? (get(sendspinPlayer) == value
+                                ? get(sendspinPlayerName)
+                                : value.substring(PluginPlayers.prefix.length))
                           : null)
                 : null);
 
@@ -446,6 +468,29 @@ class SettingsManager extends Manager {
         );
       }
     }
+    // The intercom rang at the notification volume before it had a volume
+    // of its own. Written once, so the ring keeps its loudness.
+    if (_prefs.get(_prefix + intercomRingVolume.key) == null) {
+      await _prefs.setDouble(
+        _prefix + intercomRingVolume.key,
+        get(notificationsVolume).toDouble(),
+      );
+    }
+    // While Amazon's wake word engine is off (PryonCatalog.enabled), a kiosk
+    // that listened with it moves to vsWakeWord's Alexa once, the closest
+    // match to every wake word Amazon's engine offered.
+    const amazonEngineMigration = 'voice.amazon_engine_off.migrated';
+    if (!PryonCatalog.enabled && internal(amazonEngineMigration).isEmpty) {
+      if (_prefs.get(_prefix + voiceWakeWordEngine.key) == 'pryon') {
+        await _prefs.setString(_prefix + voiceWakeWordEngine.key, 'vswakeword');
+        await _prefs.setString(_prefix + voiceWakeWords.key, '["alexa"]');
+        log.info(
+          name,
+          "moved from Amazon's wake word engine to vsWakeWord Alexa",
+        );
+      }
+      await setInternal(amazonEngineMigration, '1');
+    }
     // The preview's automatic language choice is now explicit English.
     if (_prefs.get(_prefix + uiLanguage.key) == 'system') {
       await _prefs.setString(_prefix + uiLanguage.key, 'en');
@@ -475,6 +520,19 @@ class SettingsManager extends Manager {
         log.info(name, 'kept Expose kiosk entities off on upgrade');
       }
       await setInternal(entitiesDefaultMigration, '1');
+    }
+    // Enable geolocation access was a hidden switch, on by default, that
+    // allowed nothing: Android's geolocation request went unanswered. It
+    // works now and starts off (issue #1383), so a value stored before it
+    // had a row (a settings import or a fleet sync wrote the old default)
+    // is dropped once.
+    const geolocationMigration = 'web.geolocation_off.migrated';
+    if (internal(geolocationMigration).isEmpty) {
+      if (_prefs.get(_prefix + webGeolocation.key) != null) {
+        await _prefs.remove(_prefix + webGeolocation.key);
+        log.info(name, 'turned geolocation access off on upgrade');
+      }
+      await setInternal(geolocationMigration, '1');
     }
     // The music duck used to go up to 25%, more than the software echo
     // canceller keeps out of the microphone. Bring existing installs down
@@ -607,14 +665,23 @@ class SettingsManager extends Manager {
       await _prefs.remove('${_prefix}sendspin.ma_player_name');
     }
     // The pick is filtered by a source now: a pick stored before the
-    // source existed names its own. The Local Media Session and the
-    // AirPlay receiver are this device's own picks and belong under the
-    // empty source.
+    // source existed names its own. The Local Media Session, the AirPlay
+    // receiver and plugin players are this device's own picks and belong
+    // under the empty source, so one stored under another source (an
+    // earlier build of this very migration gave plugin picks 'ma') moves
+    // back to it.
     final picked = _prefs.getString('${_prefix}sendspin.player') ?? '';
-    if (picked.trim().isNotEmpty &&
-        !picked.startsWith('session:') &&
-        picked != 'airplay' &&
-        (_prefs.getString('${_prefix}sendspin.player_source') ?? '').isEmpty) {
+    final storedSource =
+        _prefs.getString('${_prefix}sendspin.player_source') ?? '';
+    final deviceOnly =
+        picked.startsWith('session:') ||
+        picked == 'airplay' ||
+        picked.startsWith('plugin:');
+    if (deviceOnly && storedSource.isNotEmpty) {
+      await _prefs.setString('${_prefix}sendspin.player_source', '');
+      log.info(name, 'migrated sendspin.player_source = (this device)');
+    }
+    if (picked.trim().isNotEmpty && !deviceOnly && storedSource.isEmpty) {
       final source = picked.startsWith('ha:')
           ? 'ha'
           : picked.startsWith('sonos:')
@@ -700,10 +767,27 @@ class SettingsManager extends Manager {
       }
       await setInternal(skin2Migration, '1');
     }
+    // Timers open the full screen view now and pills are opt in. A value
+    // stored while pills were the only way to show a timer (a settings
+    // import, a fleet sync or the Voice Satellite migration wrote it) is
+    // dropped once, so every install starts on the full screen view.
+    const timerPillsMigration = 'voice.timer_pills_off.migrated';
+    if (internal(timerPillsMigration).isEmpty) {
+      if (_prefs.get(_prefix + voiceTimerPills.key) != null) {
+        await _prefs.remove(_prefix + voiceTimerPills.key);
+        log.info(name, 'moved timers to the full screen view on upgrade');
+      }
+      await setInternal(timerPillsMigration, '1');
+    }
   }
 
   T get<T>(SettingDef<T> def) {
     final raw = _prefs.get(_prefix + def.key);
+    // Amazon's wake word language is one of the locales installed on the
+    // Echo, the first one until another is picked.
+    if (def.key == voiceAmazonLocale.key) {
+      return PryonCatalog.resolveLocale(raw is String ? raw : '') as T;
+    }
     // The `raw != null` guard matters: when T is inferred nullable (e.g.
     // Object? from a caller's ternary), `null is T` is true, which would
     // wrongly return null for an unstored setting instead of its default.
@@ -764,6 +848,9 @@ class SettingsManager extends Manager {
       _prefs.getString('${_prefix}internal.$key') ?? '';
 
   Future<void> setInternal(String key, String value) async {
+    // A save rewrites the whole settings file on disk, so one that changes
+    // nothing is skipped.
+    if (value == (_prefs.getString('${_prefix}internal.$key') ?? '')) return;
     if (value.isEmpty) {
       await _prefs.remove('${_prefix}internal.$key');
     } else {
@@ -867,7 +954,9 @@ class SettingsManager extends Manager {
                       isCameraStreamResolution(value)) ||
                   (def.key == screensaverMode.key &&
                       isPluginScreensaver(value)) ||
-                  (isVoiceSkinSetting(def.key) && isPluginVoiceSkin(value))):
+                  (isVoiceSkinSetting(def.key) && isPluginVoiceSkin(value)) ||
+                  (def.key == librarySource.key &&
+                      PluginPlayers.isPick(value))):
         await set(def, value, source: source);
       default:
         return false;
@@ -927,6 +1016,9 @@ class SettingsManager extends Manager {
         if (def.alsoDependsOn != null) 'alsoDependsOn': def.alsoDependsOn,
         if (def.alsoDependsOn != null)
           'alsoDependsOnValue': def.alsoDependsOnValue,
+        if (def.offWhen != null) 'offWhen': def.offWhen,
+        if (def.offWhen != null) 'offWhenValue': def.offWhenValue,
+        if (def.offNote != null) 'offNote': def.offNote,
         if (def.hidden || deviceHiddenKeys.contains(def.key)) 'hidden': true,
         if (def.multiline) 'multiline': true,
         if (def.linksTo != null) 'linksTo': def.linksTo,
@@ -949,6 +1041,7 @@ class SettingsManager extends Manager {
                 !pluginScreensavers().containsKey(get(def)))
               get(def) as String: 'Unavailable plugin screensaver',
             if (isVoiceSkinSetting(def.key)) ...pluginVoiceSkins(),
+            if (def.key == librarySource.key) ...pluginLibraries(),
             if (def.key == voiceAmazonLocale.key)
               for (final locale in PryonCatalog.locales)
                 locale: PryonCatalog.localeLabel(locale),

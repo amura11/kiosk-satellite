@@ -42,11 +42,19 @@ void main() {
   };
 
   String crash = '';
+  // What the native brightness bridge answers; null is a device that does
+  // not answer.
+  Map<String, Object?>? brightnessRange;
   setUpAll(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('kiosk_satellite/background'),
           (call) async => call.method == 'getLastCrash' ? crash : null,
+        );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('kiosk_satellite/brightness'),
+          (call) async => call.method == 'range' ? brightnessRange : null,
         );
   });
 
@@ -385,6 +393,34 @@ void main() {
     },
   );
 
+  test('basic carries the brightness range the device reports', () async {
+    // A Redmi Pad 2: the constant says 4095, Android converts on 255 and
+    // nothing has written the setting but this app yet.
+    brightnessRange = {
+      'min': 10,
+      'max': 255,
+      'reportedMax': 4095,
+      'frameworkMax': 255,
+      'seenMax': null,
+    };
+    await build({});
+    await pump();
+    final basic = bodyOf(sent.single)['basic'] as Map;
+    expect(basic['brightness_min'], 10);
+    expect(basic['brightness_max'], 255);
+    expect(basic['brightness_reported_max'], 4095);
+    expect(basic['brightness_framework_max'], 255);
+    expect(basic.containsKey('brightness_seen_max'), isFalse);
+  });
+
+  test('basic leaves the brightness range out when the device does not '
+      'answer', () async {
+    await build({});
+    await pump();
+    final basic = bodyOf(sent.single)['basic'] as Map;
+    expect(basic.keys.where((k) => '$k'.startsWith('brightness_')), isEmpty);
+  });
+
   test('the calendar reports counts and picks, never its calendars', () async {
     await build({
       'ks.voice.runtime': 'dashboard',
@@ -456,7 +492,49 @@ void main() {
     expect(u['vs_second_assistant'], isTrue);
     expect(u['vs_custom_chimes'], 1);
     expect(u['vs_reactive_bar'], isTrue);
-    expect(u['vs_timer_pills'], isTrue);
+    // The full screen timers view is the default.
+    expect(u['vs_timer_pills'], isFalse);
+    // Timers: the switches of Settings > Timers, with nothing shared yet.
+    expect(u['timers_show_on_start'], isTrue);
+    expect(u['timers_show_before_end'], 60);
+    expect(u['timers_pause_screensaver'], isFalse);
+    expect(u['timers_receive'], isTrue);
+    expect(u['timers_shared_received'], '0');
+    expect(u['timers_share'], isFalse);
+    expect(u.containsKey('timers_share_kiosks'), isFalse);
+    expect(u['timers_started'], '0');
+    expect(u['timers_by_hand'], '0');
+    // Shared with two kiosks: the count goes out, their names and ids stay.
+    await settings.set(defs.voiceTimersShare, true);
+    await settings.set(
+      defs.voiceTimersShareWith,
+      '[{"id":"aaaa1111","name":"Bedroom tablet"},'
+      '{"id":"bbbb2222","name":"Office tablet"}]',
+    );
+    await settings.set(defs.voiceTimerSpeak, true);
+    await settings.set(defs.timersTtsEngine, 'tts.piper');
+    for (var i = 0; i < 3; i++) {
+      await UsageCounters.bump(settings, 'timers_started');
+    }
+    await UsageCounters.bump(settings, 'timers_by_hand');
+    await UsageCounters.bump(settings, 'timers_shared_received', by: 7);
+    u = await usage();
+    expect(u['timers_share'], isTrue);
+    expect(u['timers_share_kiosks'], 2);
+    expect(u['timers_tts'], 'picked');
+    expect(u['timers_started'], '1-5');
+    expect(u['timers_by_hand'], '1-5');
+    expect(u['timers_shared_received'], '6-20');
+    expect(jsonEncode(u), isNot(contains('Bedroom')));
+    expect(jsonEncode(u), isNot(contains('aaaa1111')));
+    expect(jsonEncode(u), isNot(contains('piper')));
+    // The pills take the view's three rows away, in settings and here.
+    await settings.set(defs.voiceTimerPills, true);
+    u = await usage();
+    expect(u.containsKey('timers_show_on_start'), isFalse);
+    expect(u.containsKey('timers_pause_screensaver'), isFalse);
+    await settings.set(defs.voiceTimerPills, false);
+    u = await usage();
     expect(jsonEncode(u), isNot(contains('kitchen')));
     expect(jsonEncode(u), isNot(contains('Second brain')));
     expect(jsonEncode(u), isNot(contains('ding')));
@@ -879,12 +957,134 @@ void main() {
     expect(u['alarms_snooze_minutes'], '5');
     expect(u['alarms_silence_after_minutes'], '10');
     expect(u['alarms_sunrise_minutes'], '30');
+    expect(u['alarms_skip_minutes'], '10');
     final text = jsonEncode(u);
     expect(text, isNot(contains('Work')));
     expect(text, isNot(contains('Dentist')));
     expect(text, isNot(contains('06:30')));
     expect(text, isNot(contains('rooster')));
     expect(text, isNot(contains('gentle')));
+  });
+
+  group('Ground Control', () {
+    Map<String, Object?>? gcState;
+
+    Future<Map> usage(Map<String, Object> initial) async {
+      await build(initial, firstDelay: const Duration(days: 1));
+      commands.register(
+        Command(
+          name: 'groundControlStatus',
+          description: 'stub',
+          handler: (_) async => CommandResult.ok(gcState),
+        ),
+      );
+      expect(await analytics.sendSnapshot(force: true), isTrue);
+      return bodyOf(sent.single)['usage'] as Map;
+    }
+
+    setUp(() {
+      gcState = {
+        'enabled': true,
+        'status': 'connected',
+        'baseUrl': 'http://192.168.1.10:10900',
+        'version': '1.2.0',
+        'model': 'accurate',
+        'haApp': true,
+        'install': {
+          'install': 'docker',
+          'arch': 'aarch64',
+          'cuda': '13.0',
+          'onGpu': true,
+        },
+        'people': [
+          {'id': 'p1', 'name': 'Alice'},
+          {'id': 'p2', 'name': 'Bob'},
+        ],
+      };
+    });
+
+    test('off reports only the switch', () async {
+      final u = await usage({});
+      expect(u['gc_enabled'], isFalse);
+      for (final k in [
+        'gc_address',
+        'gc_version',
+        'voice_match_model',
+        'gc_ha_app',
+        'gc_install',
+        'gc_arch',
+        'gc_cuda',
+        'gc_on_gpu',
+        'gc_people',
+        'voice_match_enabled',
+        'voice_match_policy',
+      ]) {
+        expect(u.containsKey(k), isFalse, reason: k);
+      }
+    });
+
+    test('on reports what it runs and a count of people, never their names '
+        'or the address', () async {
+      final u = await usage({
+        'ks.ground_control.enabled': true,
+        'ks.ground_control.address': '192.168.1.10:10900',
+        'ks.voice.enabled': true,
+        'ks.voice_match.enabled': true,
+        'ks.voice_match.policy': 'people',
+        'ks.voice_match.people': jsonEncode([
+          {'id': 'p1', 'name': 'Alice'},
+        ]),
+      });
+      expect(u['gc_enabled'], isTrue);
+      expect(u['gc_address'], 'manual');
+      expect(u['gc_version'], '1.2.0');
+      expect(u['voice_match_model'], 'accurate');
+      expect(u['gc_ha_app'], isTrue);
+      expect(u['gc_install'], 'docker');
+      expect(u['gc_arch'], 'aarch64');
+      expect(u['gc_cuda'], '13.0');
+      expect(u['gc_on_gpu'], isTrue);
+      expect(u['gc_people'], 2);
+      expect(u['voice_match_enabled'], isTrue);
+      expect(u['voice_match_policy'], 'people');
+      final text = jsonEncode(u);
+      expect(text, isNot(contains('Alice')));
+      expect(text, isNot(contains('Bob')));
+      expect(text, isNot(contains('p1')));
+      expect(text, isNot(contains('192.168.1.10')));
+    });
+
+    test('a kiosk that never connected leaves out what Ground Control '
+        'runs', () async {
+      gcState = {'enabled': true, 'status': 'searching', 'version': ''};
+      final u = await usage({'ks.ground_control.enabled': true});
+      expect(u['gc_address'], 'mdns');
+      expect(u.containsKey('gc_version'), isFalse);
+      expect(u.containsKey('gc_install'), isFalse);
+      expect(u.containsKey('gc_people'), isFalse);
+      expect(u.containsKey('voice_match_model'), isFalse);
+      expect(u['voice_match_enabled'], isFalse);
+      expect(u.containsKey('voice_match_policy'), isFalse);
+    });
+
+    test('an older Ground Control leaves out how it is installed', () async {
+      gcState!.remove('install');
+      final u = await usage({'ks.ground_control.enabled': true});
+      expect(u['gc_version'], '1.2.0');
+      for (final k in ['gc_install', 'gc_arch', 'gc_cuda', 'gc_on_gpu']) {
+        expect(u.containsKey(k), isFalse, reason: k);
+      }
+    });
+
+    test('Chosen people with nobody picked reads as enrolled', () async {
+      final u = await usage({
+        'ks.ground_control.enabled': true,
+        'ks.voice.enabled': true,
+        'ks.voice_match.enabled': true,
+        'ks.voice_match.policy': 'people',
+      });
+      expect(u['voice_match_policy'], 'enrolled');
+    });
   });
 
   test('custom pages read as counts and places, never as names or '
@@ -1322,5 +1522,8 @@ java.lang.IllegalStateException: WebView gone
     expect(sent, isEmpty);
   });
 
-  tearDown(() => crash = '');
+  tearDown(() {
+    crash = '';
+    brightnessRange = null;
+  });
 }

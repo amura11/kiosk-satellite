@@ -55,7 +55,9 @@ export const intercomTextMessageIds = {
   "Ring for": "settingIntercomRingSecondsTitle",
   "How long a call rings before it counts as missed.": "settingIntercomRingSecondsDescription",
   "Ring sound": "settingIntercomRingSoundTitle",
-  "Plays at the notification volume.": "settingIntercomRingSoundDescription",
+  "Plays at the ring volume.": "settingIntercomRingSoundVolumeDescription",
+  "Ring volume": "settingIntercomRingVolumeTitle",
+  "How loud a call rings, apart from the media volume.": "settingIntercomRingVolumeDescription",
   "Accept announcements": "settingIntercomAcceptAnnouncementsTitle",
   "Play Announce to all from the other kiosks.": "settingIntercomAcceptAnnouncementsDescription",
   "Talk mode": "settingIntercomTalkModeTitle",
@@ -179,5 +181,11 @@ export const intercomTextMessageIds = {
   "Switch camera": "intercomSwitchCamera",
   "Your camera is off": "intercomYourCameraOff",
   "Video reconnecting…": "intercomVideoReconnecting",
-  "The camera is off. This kiosk can show video but not send it.": "intercomCameraOffNotice"
+  "The camera is off. This kiosk can show video but not send it.": "intercomCameraOffNotice",
+  "Call buttons": "settingIntercomCallButtonsTitle",
+  "Buttons on the screen of the kiosk you call. A tap runs the action on this kiosk.": "settingIntercomCallButtonsDescription",
+  "Add a button": "intercomCallButtonsAdd",
+  "Icon": "intercomCallButtonIcon",
+  "Label": "alarmsLabel",
+  "Action": "gestureAction"
 };

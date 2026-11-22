@@ -329,14 +329,14 @@ void main() {
       bus.publish(
         const VoiceInteractionChanged(
           active: true,
-          reason: 'media',
-          source: InteractionSource.sendspin,
+          reason: 'voice',
+          source: InteractionSource.command,
         ),
       );
       bus.publish(
         const VoiceInteractionChanged(
           active: true,
-          reason: 'media',
+          reason: 'voice',
           source: InteractionSource.page,
         ),
       );
@@ -344,7 +344,7 @@ void main() {
       bus.publish(
         const VoiceInteractionChanged(
           active: false,
-          reason: 'media',
+          reason: 'voice',
           source: InteractionSource.page,
         ),
       );
@@ -352,7 +352,54 @@ void main() {
       expect(
         cameras.activeViewId.value,
         isNull,
-        reason: 'discarding the page must preserve native playback',
+        reason: 'discarding the page must preserve the native turn',
+      );
+      bus.publish(
+        const VoiceInteractionChanged(
+          active: false,
+          reason: 'voice',
+          source: InteractionSource.command,
+        ),
+      );
+      await pumpEventQueue();
+      expect(cameras.activeViewId.value, viewId);
+      expect(cameras.focusedCameraId.value, cameraId);
+
+      // Music and an announcement from Home Assistant play over the view
+      // (#1530), and a voice turn during music brings it back once the
+      // turn ends, with the music still playing.
+      const sendspinPlaying = VoiceInteractionChanged(
+        active: true,
+        reason: 'media',
+        source: InteractionSource.sendspin,
+      );
+      const announcement = VoiceInteractionChanged(
+        active: true,
+        reason: VoiceInteractionChanged.announcementReason,
+      );
+      bus.publish(sendspinPlaying);
+      await pumpEventQueue();
+      expect(cameras.activeViewId.value, viewId, reason: 'music keeps it');
+      bus.publish(announcement);
+      await pumpEventQueue();
+      expect(cameras.activeViewId.value, viewId, reason: 'announcement too');
+      bus.publish(
+        const VoiceInteractionChanged(
+          active: false,
+          reason: VoiceInteractionChanged.announcementReason,
+        ),
+      );
+      await pumpEventQueue();
+      expect(cameras.activeViewId.value, viewId);
+      bus.publish(const VoiceInteractionChanged(active: true));
+      await Future<void>.delayed(Duration.zero);
+      expect(cameras.activeViewId.value, isNull);
+      bus.publish(const VoiceInteractionChanged(active: false));
+      await pumpEventQueue();
+      expect(
+        cameras.activeViewId.value,
+        viewId,
+        reason: 'the music still playing must not keep the view closed',
       );
       bus.publish(
         const VoiceInteractionChanged(
@@ -650,6 +697,86 @@ void main() {
     expect(cameras.config.defaultView, isNotNull);
     expect(cameras.config.defaultView!.cameraIds, isEmpty);
 
+    await cameras.dispose();
+    await logger.dispose();
+    await bus.dispose();
+  });
+
+  test('Delete unused cameras keeps every camera a view holds (issue '
+      '#1467)', () async {
+    SharedPreferences.setMockInitialValues({});
+    final bus = EventBus();
+    final logger = Logger();
+    final commands = CommandRegistry(logger);
+    final settings = SettingsManager(bus, commands, logger);
+    await settings.init();
+    final cameras = CameraManager(
+      bus,
+      commands,
+      logger,
+      settings,
+      HomeAssistantManager(bus, commands, logger, settings),
+    );
+    await cameras.init();
+
+    Future<String> add(String name) async {
+      final source = await commands.execute('cameraPutSource', {
+        'name': name,
+        'kind': 'whep',
+        'whepUrl': 'https://camera.example/$name',
+      });
+      return '${(source.data as Map)['id']}';
+    }
+
+    final front = await add('front');
+    final garage = await add('garage');
+    await add('old_doorbell');
+    await add('test_pattern');
+    expect(
+      (await commands.execute('cameraPutView', {
+        'id': CameraViewConfig.defaultId,
+        'name': 'Default',
+        'cameraIds': [front],
+      })).ok,
+      isTrue,
+    );
+    expect(
+      (await commands.execute('cameraPutView', {
+        'name': 'Outside',
+        'cameraIds': [garage, front],
+      })).ok,
+      isTrue,
+    );
+    expect(cameras.config.unusedCameras.map((camera) => camera.name), [
+      'old_doorbell',
+      'test_pattern',
+    ]);
+
+    // Count writes of the stored configuration, once the earlier ones have
+    // landed: the whole clear is one write.
+    await pumpEventQueue();
+    var saves = 0;
+    final sub = bus
+        .on<SettingChanged>()
+        .where((event) => event.key == defs.cameraConfig.key)
+        .listen((_) => saves++);
+    final result = await commands.execute('cameraDeleteUnused', const {});
+    await pumpEventQueue();
+    expect(result.ok, isTrue);
+    expect((result.data as Map)['deleted'], 2);
+    expect(saves, 1);
+    expect(cameras.config.cameras.map((camera) => camera.id), [front, garage]);
+    expect(cameras.config.unusedCameras, isEmpty);
+    expect(cameras.config.findView('Outside')!.cameraIds, [garage, front]);
+    expect(cameras.config.defaultView!.cameraIds, [front]);
+
+    // Nothing left to clear is not an error and writes nothing.
+    final again = await commands.execute('cameraDeleteUnused', const {});
+    await pumpEventQueue();
+    expect((again.data as Map)['deleted'], 0);
+    expect(saves, 1);
+
+    await sub.cancel();
     await cameras.dispose();
     await logger.dispose();
     await bus.dispose();

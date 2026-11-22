@@ -612,19 +612,32 @@ class _ScreensaverPlayerLayout extends StatelessWidget {
   final Widget screensaver;
   final Widget Function(bool shared)? player;
 
-  Widget _pane(BuildContext context, Rect rect, String name, Widget child) =>
-      Positioned.fromRect(
-        key: ValueKey(name),
-        rect: rect,
-        child: RepaintBoundary(
-          child: ClipRect(
-            child: MediaQuery(
-              data: MediaQuery.of(context).copyWith(size: rect.size),
-              child: child,
-            ),
-          ),
+  /// [clip] is off for a pane that is the whole screen: the engine floors
+  /// the clip to whole logical pixels when it applies it to a WebView's
+  /// platform view, which on a fractional density (Galaxy Tab A9, Tab S8)
+  /// shaved the right and bottom edges and let the dashboard show there
+  /// (issue #1402). The window clips a full pane anyway. The ClipRect
+  /// stays in the tree either way, so the pane's child is never remounted
+  /// when the player comes and goes.
+  Widget _pane(
+    BuildContext context,
+    Rect rect,
+    String name,
+    Widget child, {
+    bool clip = true,
+  }) => Positioned.fromRect(
+    key: ValueKey(name),
+    rect: rect,
+    child: RepaintBoundary(
+      child: ClipRect(
+        clipBehavior: clip ? Clip.hardEdge : Clip.none,
+        child: MediaQuery(
+          data: MediaQuery.of(context).copyWith(size: rect.size),
+          child: child,
         ),
-      );
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -677,21 +690,24 @@ class _ScreensaverPlayerLayout extends StatelessWidget {
               'screensaver-pane',
               PhotoFillOverride(
                 fill: shared && photoFill != 'default' ? photoFill : null,
-                // Opaque when shared: a clear pane (the dashboard with
-                // Double tap to dismiss) still takes the touch that
-                // dismisses, as every shared pane does.
+                // Beside the player the pane reports every finger that
+                // lands on it, since the kiosk screen's report covers the
+                // player's buttons too. Translucent: the report is made
+                // over a clear pane as well (the dashboard with Double
+                // tap to dismiss) and the touch still reaches the card
+                // under it (issue #1446).
                 child: Listener(
                   behavior: shared
-                      ? HitTestBehavior.opaque
+                      ? HitTestBehavior.translucent
                       : HitTestBehavior.deferToChild,
                   onPointerDown: shared
-                      ? (_) => container.screensaver.notifyActivity(
-                          'screensaver_touch',
-                        )
+                      ? (_) =>
+                            container.screensaver.notifyActivity('pane_touch')
                       : null,
                   child: screensaver,
                 ),
               ),
+              clip: shared,
             ),
           if (player != null)
             _pane(context, playerRect, 'now-playing-pane', player!(shared)),
@@ -971,9 +987,21 @@ class _ClockScreensaverState extends State<ClockScreensaver>
     });
     _armBackgroundRefresh();
     widget.container.screensaver.alarmTakeover.addListener(_onTakeover);
+    _skipAt = widget.container.alarms.status.value.skip?.at;
+    widget.container.alarms.status.addListener(_onAlarmStatus);
   }
 
   void _onTakeover() {
+    if (mounted) setState(() {});
+  }
+
+  DateTime? _skipAt;
+
+  /// Skip comes and goes under the clock with the alarm's window.
+  void _onAlarmStatus() {
+    final at = widget.container.alarms.status.value.skip?.at;
+    if (at == _skipAt) return;
+    _skipAt = at;
     if (mounted) setState(() {});
   }
 
@@ -1071,6 +1099,7 @@ class _ClockScreensaverState extends State<ClockScreensaver>
   @override
   void dispose() {
     widget.container.screensaver.alarmTakeover.removeListener(_onTakeover);
+    widget.container.alarms.status.removeListener(_onAlarmStatus);
     _tick?.cancel();
     _shift?.cancel();
     _bgSub?.cancel();
@@ -1346,6 +1375,10 @@ class _ClockScreensaverState extends State<ClockScreensaver>
     // steps aside for them.
     final ringing =
         widget.container.screensaver.alarmTakeover.value == 'ringing';
+    // Before an alarm, Skip for its next ring sits under the clock.
+    final skipAt = ringing
+        ? null
+        : widget.container.alarms.status.value.skip?.at;
     // The At a Glance row sits under the clock and needs room for itself,
     // so the clock gives some back rather than pushing the row off a short
     // panel. Only when the row actually has something to show, and not
@@ -1465,7 +1498,30 @@ class _ClockScreensaverState extends State<ClockScreensaver>
             alignment: Alignment(0, glance ? _clockAnchorWithGlance : 0),
             child: Transform.translate(
               offset: _offset,
-              child: !ringing
+              child: skipAt != null
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: face,
+                            ),
+                          ),
+                          SizedBox(height: clockSize * .1),
+                          AlarmSkipButton(
+                            container: widget.container,
+                            at: skipAt,
+                            color: digitColor,
+                            glass: digitColor.withValues(alpha: .1),
+                            edge: digitColor.withValues(alpha: .22),
+                          ),
+                        ],
+                      ),
+                    )
+                  : !ringing
                   ? face
                   // The face gives way to the label and the buttons, which
                   // keep their full size: a flip or roller face fills the
@@ -3914,6 +3970,37 @@ setInterval(function () {
     // An empty URL falls through to the bundled page, whose website mode
     // shows the same black screen it always has.
     final topLevel = website.isNotEmpty;
+    return LayoutBuilder(
+      builder: (context, box) => OverflowBox(
+        alignment: Alignment.topLeft,
+        minWidth: _coveringExtent(context, box.maxWidth),
+        maxWidth: _coveringExtent(context, box.maxWidth),
+        minHeight: _coveringExtent(context, box.maxHeight),
+        maxHeight: _coveringExtent(context, box.maxHeight),
+        child: _webViewWidget(website, topLevel),
+      ),
+    );
+  }
+
+  /// The WebView's extent for a slot of [extent] logical pixels: the next
+  /// whole one up plus one physical pixel. A page is laid out in whole CSS
+  /// pixels, rounded down from the view's size, and the engine floors that
+  /// size to physical pixels on its way to the platform view. On a screen
+  /// whose logical size is a fraction (Galaxy Tab A9: 600.94 x 1006.57) a
+  /// view of exactly the slot's size left the page a pixel or two short on
+  /// the right and bottom, with the dashboard showing there (issue #1402).
+  /// The overhang, under one CSS pixel plus one physical pixel, is off the
+  /// screen. The dashboard's plane does the same in kiosk_screen.dart.
+  ///
+  /// The real pixel ratio, not MediaQuery's: this sits inside a
+  /// UiScaleExempt, where the slot is in true logical pixels while
+  /// MediaQuery still carries the Scale UI factor.
+  static double _coveringExtent(BuildContext context, double extent) {
+    if (!extent.isFinite) return extent;
+    return extent.ceilToDouble() + 1 / View.of(context).devicePixelRatio;
+  }
+
+  Widget _webViewWidget(String website, bool topLevel) {
     return InAppWebView(
       key: ValueKey(_epoch),
       initialUrlRequest: topLevel ? URLRequest(url: WebUri(website)) : null,
@@ -3957,6 +4044,8 @@ setInterval(function () {
         // navigate the app anywhere.
         mediaPlaybackRequiresUserGesture: false,
         allowsInlineMediaPlayback: true,
+        // Empty keeps the WebView's own user agent.
+        userAgent: widget.container.settings.get(defs.browserUserAgent),
       ),
       // Same policy as the kiosk WebView: the media screensaver talks to
       // the same self-signed Home Assistant.
@@ -4026,12 +4115,9 @@ setInterval(function () {
             // Listener reports the same taps, and under the double-tap
             // option (discussion #248) the manager must count each tap
             // once, so the bridge's reports carry their own name for it
-            // to drop while that gate holds.
-            widget.container.screensaver.notifyActivity(
-              widget.container.screensaver.nowPlayingShared
-                  ? 'screensaver_touch'
-                  : 'touch_page',
-            );
+            // to drop while that gate holds. Beside Now Playing the pane
+            // reports the tap and this echo is dropped.
+            widget.container.screensaver.notifyActivity('touch_page');
             return null;
           },
         );
@@ -5248,10 +5334,22 @@ class ImmichScreensaver extends StatefulWidget {
 }
 
 class _ImmichSlide {
-  _ImmichSlide(this.photo, this.pair, this.pairIndex, this.pairing);
+  _ImmichSlide(
+    this.photo,
+    this.pair,
+    this.pairIndex,
+    this.pairing, {
+    this.faces = const [],
+    this.pairFaces = const [],
+  });
   final PreparedPhoto photo;
   final PreparedPhoto? pair;
   final int? pairIndex;
+
+  /// The faces in each photo, for Crop around faces. Empty for a photo
+  /// shown whole, with the setting off or when Immich found none.
+  final List<Rect> faces;
+  final List<Rect> pairFaces;
 
   /// How the two halves share the screen, null without a pair.
   final ImmichPairing? pairing;
@@ -5278,6 +5376,11 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
   /// Width over height of the current image, or null when unknown; feeds
   /// the fill-the-screen decision.
   double? _imageAspect;
+
+  /// The faces in the current photo and in its partner, which move the
+  /// crop off center (Crop around faces).
+  List<Rect> _faces = const [];
+  List<Rect> _pairFaces = const [];
 
   /// The second half of a pair of photos: the playlist index right after
   /// [_index], its decoded provider and its aspect. Null whenever one photo
@@ -5380,6 +5483,7 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
     _watchPhotoScreen(c);
     _watchPhotoSettings(c, {
       defs.screensaverImmichFill.key,
+      defs.screensaverImmichCropFaces.key,
       defs.screensaverImmichTransition.key,
       defs.screensaverImmichInterval.key,
       defs.screensaverImmichPairPortrait.key,
@@ -5584,6 +5688,8 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
         _failures = 0;
         _lastFailure = null;
         _video = video;
+        // The last photo's finished hold is not this video's.
+        _timer = null;
         final oldPhoto = _photo;
         final oldPairPhoto = _pairPhoto;
         setState(() {
@@ -5591,6 +5697,8 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
           _photo = null;
           _pairPhoto = null;
           _image = null;
+          _faces = const [];
+          _pairFaces = const [];
           _pairIndex = null;
           _pairImage = null;
           _pairAspect = null;
@@ -5650,6 +5758,8 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
         _pairPhoto = slide.pair;
         _imageAspect = slide.photo.aspect;
         _image = slide.photo.image;
+        _faces = slide.faces;
+        _pairFaces = slide.pairFaces;
         _pairIndex = slide.pairIndex;
         _pairImage = slide.pair?.image;
         _pairAspect = slide.pair?.aspect;
@@ -5658,6 +5768,7 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
       _claimCorners();
       _retirePhoto(oldPhoto);
       _retirePhoto(oldPairPhoto);
+      _timer = null;
       if (_assets.length > _span) {
         _timer = PausableTimer(_interval, _advance, paused: !_awake);
         _prefetch(next + _span);
@@ -5672,6 +5783,41 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
         .toInt()
         .clamp(2, 3600),
   );
+
+  /// How far the slide on screen is through its hold, for the progress
+  /// bar, or null when nothing counts down to a next slide: a playlist of
+  /// one, a problem message or a slide still loading. A photo follows its
+  /// timer. A video follows its own length, or the timer when Video length
+  /// holds it to Seconds per image and the timer runs out first.
+  _SlideProgress? _slideProgress() {
+    if (_problem != null || _assets.length < 2) return null;
+    final timer = _timer;
+    final video = _video;
+    if (video != null && video.value.isInitialized) {
+      final length = video.value.duration;
+      if (timer != null && timer.total < length) {
+        return (
+          done: timer.progress,
+          length: timer.total,
+          running: timer.isRunning,
+        );
+      }
+      if (length <= Duration.zero) return null;
+      final played =
+          video.value.position.inMicroseconds / length.inMicroseconds;
+      return (
+        done: played.clamp(0.0, 1.0),
+        length: length,
+        running: video.value.isPlaying && !video.value.isBuffering,
+      );
+    }
+    if (_image == null || timer == null) return null;
+    return (
+      done: timer.progress,
+      length: timer.total,
+      running: timer.isRunning,
+    );
+  }
 
   /// See the Local Media state's [_holdVideoForInterval].
   void _holdVideoForInterval(VideoPlayerController video) {
@@ -5748,7 +5894,33 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
     c.settings.get(defs.screensaverImmichTransition),
     c.settings.get(defs.screensaverImmichPairPortrait),
     c.settings.get(defs.screensaverImmichPairLandscape),
+    c.settings.get(defs.screensaverImmichCropFaces),
   );
+
+  /// How long a slide waits on Immich for its faces once the photo has
+  /// decoded. A slower server shows the photo centered, and the answer it
+  /// sends later is kept for the next lap.
+  static const _faceWait = Duration(seconds: 2);
+
+  /// The faces in [asset] when Crop around faces is on and the photo will
+  /// be cropped in a frame of [frameAspect]. Started before the decode so
+  /// the two overlap. A photo shown whole asks nothing of the server.
+  Future<List<Rect>> _facesFor(
+    ImmichAsset asset,
+    String fill,
+    double? aspect,
+    double frameAspect,
+  ) {
+    if (!c.settings.get(defs.screensaverImmichCropFaces) ||
+        !photoCovers(fill, aspect, frameAspect) ||
+        !photoCropped(aspect, frameAspect)) {
+      return Future.value(const []);
+    }
+    return c.immich.faces(asset);
+  }
+
+  Future<List<Rect>> _awaitFaces(Future<List<Rect>> faces) =>
+      faces.timeout(_faceWait, onTimeout: () => const []);
 
   Future<_ImmichSlide> _prepareSlide(int index, bool Function() valid) async {
     bool current() => mounted && valid();
@@ -5782,6 +5954,11 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
       'zoom',
       'random',
     ].contains(c.settings.get(defs.screensaverImmichTransition));
+    final frameAspect = frame.height == 0 ? 1.0 : frame.width / frame.height;
+    final faces = _facesFor(_assets[index], fill, aspect, frameAspect);
+    final pairFaces = pair == null
+        ? Future.value(const <Rect>[])
+        : _facesFor(_assets[pair.index], fill, pair.aspect, frameAspect);
     final photo = await PreparedPhoto.prepare(
       bytes,
       context: context,
@@ -5806,12 +5983,33 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
               valid: current,
               beforeDecode: _waitForPhotoScreen,
             );
-      return _ImmichSlide(photo, partner, pair?.index, pair?.pairing);
+      final found = await Future.wait([
+        _awaitFaces(faces),
+        _awaitFaces(pairFaces),
+      ]);
+      if (!mounted || !valid()) {
+        partner?.dispose();
+        throw PhotoPreparationCancelled();
+      }
+      return _ImmichSlide(
+        photo,
+        partner,
+        pair?.index,
+        pair?.pairing,
+        faces: found[0],
+        pairFaces: found[1],
+      );
     } catch (e) {
       photo.dispose();
       if (e is PhotoPreparationCancelled || !mounted || !valid()) rethrow;
       // A broken optional partner must not discard the usable first photo.
       c.log.debug('screensaver', 'immich partner decode failed: $e');
+      final singleFaces = _facesFor(
+        _assets[index],
+        fill,
+        aspect,
+        mq.size.height == 0 ? 1 : mq.size.width / mq.size.height,
+      );
       final single = await PreparedPhoto.prepare(
         bytes,
         context: context,
@@ -5822,7 +6020,12 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
         valid: current,
         beforeDecode: _waitForPhotoScreen,
       );
-      return _ImmichSlide(single, null, null, null);
+      final found = await _awaitFaces(singleFaces);
+      if (!mounted || !valid()) {
+        single.dispose();
+        throw PhotoPreparationCancelled();
+      }
+      return _ImmichSlide(single, null, null, null, faces: found);
     }
   }
 
@@ -5927,6 +6130,7 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
     required double frameAspect,
     required int index,
     required String transition,
+    List<Rect> faces = const [],
   }) {
     final fill = PhotoFillOverride.resolve(
       context,
@@ -5934,9 +6138,13 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
     );
     final fillWanted = fill != 'off';
     final covers = photoCovers(fill, aspect, frameAspect);
+    // Framed against the frame this build has, not the one the faces were
+    // looked up for, so a rotated panel still crops around them.
+    final framing = covers ? photoFraming(faces, aspect, frameAspect) : null;
     Widget picture = Image(
       image: image,
       fit: covers ? BoxFit.cover : BoxFit.contain,
+      alignment: framing?.crop ?? Alignment.center,
       gaplessPlayback: true,
       errorBuilder: (_, _, _) => const SizedBox.expand(),
     );
@@ -5947,6 +6155,7 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
       picture = _KenBurnsDrift(
         index: index,
         active: _awake,
+        anchor: framing?.focus,
         duration:
             Duration(
               seconds: c.settings
@@ -6053,6 +6262,7 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
           frameAspect: size.height == 0 ? 1 : size.width / size.height,
           index: _index,
           transition: transition,
+          faces: _faces,
         );
       } else {
         // Two photos, half the panel each: no gutter between them, since
@@ -6076,6 +6286,7 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
               frameAspect: half,
               index: _index,
               transition: transition,
+              faces: _faces,
             ),
           ),
           Expanded(
@@ -6086,6 +6297,7 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
               frameAspect: half,
               index: pairIndex,
               transition: transition,
+              faces: _pairFaces,
             ),
           ),
         ];
@@ -6117,56 +6329,260 @@ class _ImmichScreensaverState extends State<ImmichScreensaver>
     final pairIndex = _pairIndex;
     return ColoredBox(
       color: Colors.black,
-      child: showMetadata
-          ? Stack(
-              fit: StackFit.expand,
-              children: [
-                body,
-                // A pair gets a panel per photo, each on its own half,
-                // rather than one panel speaking for a photo it may not
-                // even be next to. The corners are fixed here (the widget
-                // layer stands down from both while the pair holds them).
-                if (pairIndex == null)
-                  _immichMetadata(_assets[_index])
-                else ...[
-                  if (_pairing == ImmichPairing.stacked)
-                    // The top photo's panel lives in the top half, so its
-                    // bottom corner is the middle of the screen: the photo
-                    // keeps its details under it, and the screen's top
-                    // corners stay the widgets'.
-                    // Its caption likewise sits over the seam, under its
-                    // own photo, and stays out of the At a Glance row's
-                    // reckoning since it is nowhere near the bottom.
-                    Positioned(
-                      left: 0,
-                      top: 0,
-                      right: 0,
-                      height: MediaQuery.sizeOf(context).height / 2,
-                      child: _immichMetadata(
-                        _assets[_index],
-                        corner: _pairCorners[0],
-                        reportCaption: false,
-                      ),
-                    )
-                  else
-                    _immichMetadata(
-                      _assets[_index],
-                      corner: _pairCorners[0],
-                      captionHalf: _CaptionHalf.left,
-                    ),
-                  _immichMetadata(
-                    _assets[pairIndex],
-                    corner: _pairCorners[1],
-                    captionHalf: _pairing == ImmichPairing.stacked
-                        ? null
-                        : _CaptionHalf.right,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          body,
+          if (showMetadata) ...[
+            // A pair gets a panel per photo, each on its own half,
+            // rather than one panel speaking for a photo it may not
+            // even be next to. The corners are fixed here (the widget
+            // layer stands down from both while the pair holds them).
+            if (pairIndex == null)
+              _immichMetadata(_assets[_index])
+            else ...[
+              if (_pairing == ImmichPairing.stacked)
+                // The top photo's panel lives in the top half, so its
+                // bottom corner is the middle of the screen: the photo
+                // keeps its details under it, and the screen's top
+                // corners stay the widgets'.
+                // Its caption likewise sits over the seam, under its
+                // own photo, and stays out of the At a Glance row's
+                // reckoning since it is nowhere near the bottom.
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  right: 0,
+                  height: MediaQuery.sizeOf(context).height / 2,
+                  child: _immichMetadata(
+                    _assets[_index],
+                    corner: _pairCorners[0],
+                    reportCaption: false,
                   ),
-                ],
-              ],
-            )
-          : body,
+                )
+              else
+                _immichMetadata(
+                  _assets[_index],
+                  corner: _pairCorners[0],
+                  captionHalf: _CaptionHalf.left,
+                ),
+              _immichMetadata(
+                _assets[pairIndex],
+                corner: _pairCorners[1],
+                captionHalf: _pairing == ImmichPairing.stacked
+                    ? null
+                    : _CaptionHalf.right,
+              ),
+            ],
+          ],
+          Positioned.fill(
+            child: IgnorePointer(
+              child: _SlideProgressBar(
+                container: c,
+                active: _awake,
+                progress: _slideProgress,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
+
+/// How far a slide is through its hold, from 0 to 1, how long the whole
+/// hold is and whether it is counting down right now.
+typedef _SlideProgress = ({double done, Duration length, bool running});
+
+/// The Immich slideshow's progress bar (issue #1522): a strip along the
+/// top or bottom edge that fills over each slide's hold, in the color and
+/// transparency its settings name. It hides while [progress] answers null.
+///
+/// The bar animates from where the hold is to its end, so it moves at
+/// the display's frame rate. Its ticker only runs while a hold counts
+/// down on a screen that is on. A light poll checks the hold against the
+/// animation and restarts it on a new slide, a pause or a video that
+/// drifted.
+class _SlideProgressBar extends StatefulWidget {
+  const _SlideProgressBar({
+    required this.container,
+    required this.active,
+    required this.progress,
+  });
+
+  final AppContainer container;
+
+  /// False while the screen is off or covered, which stops the bar.
+  final bool active;
+
+  final _SlideProgress? Function() progress;
+
+  @override
+  State<_SlideProgressBar> createState() => _SlideProgressBarState();
+}
+
+class _SlideProgressBarState extends State<_SlideProgressBar>
+    with SingleTickerProviderStateMixin {
+  static const _thickness = 8.0;
+
+  /// Room under the bar for its shadow.
+  static const _shadow = 4.0;
+
+  /// How often the bar checks the hold. A slide that changes without a
+  /// rebuild (a video handing its hold to the interval timer) is caught
+  /// within this.
+  static const _poll = Duration(milliseconds: 250);
+
+  /// How far the animation may stray from the hold before it is put
+  /// back. A video's position only updates every 100 ms or so, so a
+  /// tighter limit would restart the animation on every poll.
+  static const _drift = 0.01;
+
+  static final _keys = {
+    defs.screensaverImmichProgressBar.key,
+    defs.screensaverImmichProgressBarPosition.key,
+    defs.screensaverImmichProgressBarColor.key,
+    defs.screensaverImmichProgressBarTransparency.key,
+  };
+
+  late final AnimationController _bar = AnimationController(vsync: this);
+  StreamSubscription<SettingChanged>? _settingsSub;
+  Timer? _timer;
+
+  SettingsManager get _settings => widget.container.settings;
+
+  bool get _on => _settings.get(defs.screensaverImmichProgressBar);
+
+  @override
+  void initState() {
+    super.initState();
+    _settingsSub = widget.container.bus.on<SettingChanged>().listen((e) {
+      if (!mounted || !_keys.contains(e.key)) return;
+      setState(() {});
+      _sync();
+    });
+    _sync();
+  }
+
+  /// The parent rebuilds on every slide change, so a new slide starts its
+  /// bar at once instead of on the next poll.
+  @override
+  void didUpdateWidget(_SlideProgressBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    _timer?.cancel();
+    _timer = null;
+    if (!_on || !widget.active) {
+      _bar.stop();
+      return;
+    }
+    _check();
+    _timer = Timer.periodic(_poll, (_) => _check());
+  }
+
+  void _check() {
+    if (!mounted) return;
+    final progress = widget.progress();
+    if (progress == null) {
+      _bar.value = 0;
+      return;
+    }
+    final running = progress.running && progress.done < 1;
+    final strayed = (progress.done - _bar.value).abs() > _drift;
+    if (!strayed && running == _bar.isAnimating) return;
+    _bar.value = progress.done;
+    if (running) {
+      unawaited(
+        _bar.animateTo(1, duration: progress.length * (1 - progress.done)),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _settingsSub?.cancel();
+    _bar.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_on) return const SizedBox.shrink();
+    final transparency =
+        _settings
+            .get(defs.screensaverImmichProgressBarTransparency)
+            .toDouble()
+            .clamp(0.0, 90.0) /
+        100;
+    final color = _rgbOr(
+      _settings.get(defs.screensaverImmichProgressBarColor),
+      Colors.white,
+    ).withValues(alpha: 1 - transparency);
+    final top =
+        _settings.get(defs.screensaverImmichProgressBarPosition) == 'top';
+    return Align(
+      alignment: top ? Alignment.topCenter : Alignment.bottomCenter,
+      child: SizedBox(
+        width: double.infinity,
+        height: _thickness + _shadow,
+        child: RepaintBoundary(
+          child: CustomPaint(
+            painter: _SlideProgressPainter(_bar, color, _thickness, top: top),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The bar rests on a soft dark shadow, like the screensaver's text: a
+/// light bar over a bright photo is otherwise nearly invisible. The
+/// shadow falls toward the middle of the screen and fades with the bar's
+/// own transparency.
+class _SlideProgressPainter extends CustomPainter {
+  _SlideProgressPainter(
+    this.done,
+    this.color,
+    this.thickness, {
+    required this.top,
+  }) : super(repaint: done);
+
+  final Animation<double> done;
+  final Color color;
+  final double thickness;
+
+  /// Whether the bar runs along the top edge rather than the bottom.
+  final bool top;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final value = done.value;
+    if (value <= 0) return;
+    final bar = Rect.fromLTWH(
+      0,
+      top ? 0 : size.height - thickness,
+      size.width * value,
+      thickness,
+    );
+    canvas.drawRect(
+      bar.translate(0, top ? 1 : -1),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.55 * color.a)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5),
+    );
+    canvas.drawRect(bar, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_SlideProgressPainter old) =>
+      old.color != color ||
+      old.done != done ||
+      old.thickness != thickness ||
+      old.top != top;
 }
 
 /// The metadata panel in a corner of a photo screensaver: album, date,
@@ -6603,10 +7019,16 @@ class _KenBurnsDrift extends StatefulWidget {
     required this.duration,
     required this.active,
     required this.child,
+    this.anchor,
   });
 
   final bool active;
   final int index;
+
+  /// The point the zoom holds still, in place of the corner [index] picks:
+  /// where the faces of a photo cropped around them land, so the zoom
+  /// cannot push them back out of the frame.
+  final Alignment? anchor;
   final Duration duration;
   final Widget child;
 
@@ -6677,7 +7099,7 @@ class _KenBurnsDriftState extends State<_KenBurnsDrift> {
       animation: _progress,
       builder: (context, child) => Transform.scale(
         scale: 1 + 0.1 * _progress.value,
-        alignment: _anchors[widget.index % _anchors.length],
+        alignment: widget.anchor ?? _anchors[widget.index % _anchors.length],
         child: child,
       ),
       child: widget.child,

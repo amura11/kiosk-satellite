@@ -296,6 +296,26 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "settingAssistantVolumeTitle",
     "description": "settingAssistantVolumeDescription",
   },
+  "audio.adaptive_volume": {
+    "title": "settingAdaptiveVolumeTitle",
+    "description": "settingAdaptiveVolumeDescription",
+  },
+  "audio.adaptive_volume_assistant": {
+    "title": "settingAdaptiveVolumeAssistantTitle",
+    "description": "settingAdaptiveVolumeAssistantDescription",
+  },
+  "audio.adaptive_volume_media": {
+    "title": "settingAdaptiveVolumeMediaTitle",
+    "description": "settingAdaptiveVolumeMediaDescription",
+  },
+  "audio.adaptive_volume_intercom": {
+    "title": "settingAdaptiveVolumeIntercomTitle",
+    "description": "settingAdaptiveVolumeIntercomDescription",
+  },
+  "audio.adaptive_volume_curve": {
+    "title": "settingAdaptiveVolumeCurveTitle",
+    "description": "settingAdaptiveVolumeCurveSliderDescription",
+  },
   "intercom.volume": {
     "title": "settingIntercomVolumeTitle",
     "description": "settingIntercomVolumeDescription",
@@ -324,6 +344,34 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "settingMicCaptureFormatTitle",
     "description": "settingMicCaptureFormatDescription",
   },
+  "audio.equalizer_enabled": {
+    "title": "settingEqualizerEnabledTitle",
+    "description": "settingEqualizerEnabledDescription",
+  },
+  "audio.equalizer_bass": {
+    "title": "settingEqualizerBand1Title",
+    "description": "settingEqualizerBand1Description",
+  },
+  "audio.equalizer_low_mid": {
+    "title": "settingEqualizerBand2Title",
+    "description": "settingEqualizerBand2Description",
+  },
+  "audio.equalizer_mid": {
+    "title": "settingEqualizerBand3Title",
+    "description": "settingEqualizerBand3Description",
+  },
+  "audio.equalizer_high_mid": {
+    "title": "settingEqualizerBand4Title",
+    "description": "settingEqualizerBand4Description",
+  },
+  "audio.equalizer_treble": {
+    "title": "settingEqualizerBand5Title",
+    "description": "settingEqualizerBand5Description",
+  },
+  "audio.equalizer_preamp": {
+    "title": "settingEqualizerPreampTitle",
+    "description": "settingEqualizerPreampDescription",
+  },
   "screensaver.enabled": {
     "title": "settingScreensaverEnabledTitle",
     "description": "settingScreensaverEnabledDescription",
@@ -331,6 +379,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "screensaver.timeout_seconds": {
     "title": "settingScreensaverTimeoutSecondsTitle",
     "description": "settingScreensaverTimeoutSecondsDescription",
+  },
+  "screensaver.fade": {
+    "title": "settingScreensaverFadeTitle",
+    "description": "settingScreensaverFadeDescription",
   },
   "screensaver.mode": {
     "title": "settingScreensaverModeTitle",
@@ -516,6 +568,10 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "settingScreensaverNotificationBrightnessTitle",
     "description": "settingScreensaverNotificationBrightnessDescription",
   },
+  "screensaver.touch_brightness_seconds": {
+    "title": "settingScreensaverTouchBrightnessSecondsTitle",
+    "description": "settingScreensaverTouchBrightnessSecondsDescription",
+  },
   "screensaver.screen_off_minutes": {
     "title": "settingScreensaverScreenOffMinutesTitle",
     "description": "settingScreensaverScreenOffMinutesDescription",
@@ -660,6 +716,10 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "settingScreensaverImmichFillTitle",
     "description": "settingScreensaverImmichFillDescription",
   },
+  "screensaver.immich_crop_faces": {
+    "title": "settingScreensaverImmichCropFacesTitle",
+    "description": "settingScreensaverImmichCropFacesDescription",
+  },
   "screensaver.immich_pair_portrait": {
     "title": "settingScreensaverImmichPairPortraitTitle",
     "description": "settingScreensaverImmichPairPortraitDescription",
@@ -671,6 +731,22 @@ const settingMessageIds = <String, Map<String, String>>{
   "screensaver.immich_edge_taps": {
     "title": "settingScreensaverImmichEdgeTapsTitle",
     "description": "settingScreensaverImmichEdgeTapsDescription",
+  },
+  "screensaver.immich_progress_bar": {
+    "title": "settingScreensaverImmichProgressBarTitle",
+    "description": "settingScreensaverImmichProgressBarDescription",
+  },
+  "screensaver.immich_progress_bar_position": {
+    "title": "settingScreensaverImmichProgressBarPositionTitle",
+    "description": "settingScreensaverImmichProgressBarPositionDescription",
+  },
+  "screensaver.immich_progress_bar_color": {
+    "title": "settingScreensaverImmichProgressBarColorTitle",
+    "description": "settingScreensaverImmichProgressBarColorDescription",
+  },
+  "screensaver.immich_progress_bar_transparency": {
+    "title": "settingScreensaverImmichProgressBarTransparencyTitle",
+    "description": "settingScreensaverImmichProgressBarTransparencyDescription",
   },
   "screensaver.immich_cache": {
     "title": "settingScreensaverImmichCacheTitle",
@@ -1034,7 +1110,7 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "camera.auto_dismiss_seconds": {
     "title": "settingCameraAutoDismissSecondsTitle",
-    "description": "settingCameraAutoDismissSecondsDescription",
+    "description": "settingCameraAutoDismissCompassDescription",
   },
   "browser.auto_reload_on_error": {
     "title": "settingAutoReloadOnErrorTitle",
@@ -1079,6 +1155,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "browser.ignore_ssl_errors": {
     "title": "settingIgnoreSslErrorsTitle",
     "description": "settingIgnoreSslErrorsDescription",
+  },
+  "browser.user_agent": {
+    "title": "settingBrowserUserAgentTitle",
+    "description": "settingBrowserUserAgentDescription",
   },
   "sendspin.player_source": {
     "title": "settingSendspinPlayerSourceTitle",
@@ -1338,7 +1418,11 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "intercom.ring_sound": {
     "title": "settingIntercomRingSoundTitle",
-    "description": "settingIntercomRingSoundDescription",
+    "description": "settingIntercomRingSoundVolumeDescription",
+  },
+  "intercom.ring_volume": {
+    "title": "settingIntercomRingVolumeTitle",
+    "description": "settingIntercomRingVolumeDescription",
   },
   "intercom.accept_announcements": {
     "title": "settingIntercomAcceptAnnouncementsTitle",
@@ -1359,6 +1443,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "intercom.hangup_key_ringing": {
     "title": "settingIntercomHangupKeyRingingTitle",
     "description": "settingIntercomHangupKeyRingingDescription",
+  },
+  "intercom.call_buttons": {
+    "title": "settingIntercomCallButtonsTitle",
+    "description": "settingIntercomCallButtonsDescription",
   },
   "kiosk.enabled": {
     "title": "settingKioskEnabledTitle",
@@ -1406,7 +1494,7 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "kiosk.allow_drawer": {
     "title": "settingKioskAllowDrawerTitle",
-    "description": "settingKioskAllowDrawerDescription",
+    "description": "settingKioskAllowQuickControlsDescription",
   },
   "kiosk.allow_dashboard": {
     "title": "settingKioskAllowDashboardTitle",
@@ -1507,6 +1595,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "lockdown.menu": {
     "title": "settingShowInKioskMenuTitle",
     "description": "settingUiDrawerItemsDescription",
+  },
+  "lockdown.auto_unlock_minutes": {
+    "title": "settingLockdownAutoUnlockMinutesTitle",
+    "description": "settingLockdownAutoUnlockMinutesDescription",
   },
   "lockdown.blackout": {
     "title": "settingLockdownBlackoutTitle",
@@ -1611,6 +1703,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "btproxy.screen_off_scan": {
     "title": "settingBtproxyScreenOffScanTitle",
     "description": "settingBtproxyScreenOffScanDescription",
+  },
+  "btproxy.device_mac": {
+    "title": "settingBtproxyDeviceMacTitle",
+    "description": "settingBtproxyDeviceMacDescription",
   },
   "btproxy.connections": {
     "title": "settingBtproxyConnectionsTitle",
@@ -1792,6 +1888,10 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "screensaverOverlayForecast",
     "description": "screensaverOverlayForecastHelp",
   },
+  "screensaver.weather_bar_high_low": {
+    "title": "screensaverOverlayHighLow",
+    "description": "screensaverWeatherBarHighLowDescription",
+  },
   "screensaver.weather_bar_humidity": {
     "title": "screensaverOverlayHumidity",
     "description": "screensaverWeatherBarHumidityDescription",
@@ -1965,8 +2065,8 @@ const settingMessageIds = <String, Map<String, String>>{
     "description": "settingVoiceAnnouncementLingerDescription",
   },
   "voice.timer_pills": {
-    "title": "settingVoiceTimerPillsTitle",
-    "description": "settingVoiceTimerPillsDescription",
+    "title": "settingVoiceTimerPillsViewTitle",
+    "description": "settingVoiceTimerPillsViewDescription",
   },
   "voice.timer_name_in_pill": {
     "title": "settingVoiceTimerNameInPillTitle",
@@ -1979,6 +2079,14 @@ const settingMessageIds = <String, Map<String, String>>{
   "voice.mute_timers": {
     "title": "settingVoiceMuteTimersTitle",
     "description": "settingVoiceMuteTimersDescription",
+  },
+  "timers.silence_after": {
+    "title": "settingTimersSilenceAfterTitle",
+    "description": "settingTimersSilenceAfterDescription",
+  },
+  "timers.dismiss_after": {
+    "title": "settingTimersDismissAfterTitle",
+    "description": "settingTimersDismissAfterDescription",
   },
   "voice.timer_alert_pill": {
     "title": "settingVoiceTimerAlertPillTitle",
@@ -1996,6 +2104,18 @@ const settingMessageIds = <String, Map<String, String>>{
     "title": "settingVoiceTimerPhraseTitle",
     "description": "settingVoiceTimerPhraseDescription",
   },
+  "voice.timers_share": {
+    "title": "settingVoiceTimersShareTitle",
+    "description": "settingVoiceTimersShareDescription",
+  },
+  "voice.timers_share_with": {
+    "title": "settingVoiceTimersShareWithTitle",
+    "description": "settingVoiceTimersShareWithDescription",
+  },
+  "voice.timers_receive": {
+    "title": "settingVoiceTimersReceiveTitle",
+    "description": "settingVoiceTimersReceiveDescription",
+  },
   "voice.wake_sound": {
     "title": "settingVoiceWakeSoundTitle",
     "description": "settingVoiceWakeSoundDescription",
@@ -2003,6 +2123,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "kiosk.allow_alarms": {
     "title": "settingKioskAllowAlarmsTitle",
     "description": "settingKioskAllowAlarmsDescription",
+  },
+  "kiosk.allow_timers": {
+    "title": "settingKioskAllowTimersTitle",
+    "description": "settingKioskAllowTimersDescription",
   },
   "screensaver.clock_alarm_takeover": {
     "title": "settingScreensaverClockAlarmTakeoverTitle",
@@ -2047,6 +2171,10 @@ const settingMessageIds = <String, Map<String, String>>{
   "alarms.sunrise_minutes": {
     "title": "settingAlarmsSunriseMinutesTitle",
     "description": "settingAlarmsSunriseMinutesDescription",
+  },
+  "alarms.skip_minutes": {
+    "title": "settingAlarmsSkipMinutesTitle",
+    "description": "settingAlarmsSkipMinutesDescription",
   },
   "alarms.tts_engine": {
     "title": "settingAlarmsTtsEngineTitle",
@@ -2442,7 +2570,7 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "calendar.idle_close_minutes": {
     "title": "settingCalendarIdleCloseMinutesTitle",
-    "description": "settingCalendarIdleCloseMinutesDescription",
+    "description": "settingIdleCloseCompassDescription",
   },
   "kiosk.allow_calendar": {
     "title": "settingKioskAllowCalendarTitle",
@@ -2570,7 +2698,7 @@ const settingMessageIds = <String, Map<String, String>>{
   },
   "library.idle_close_minutes": {
     "title": "settingCalendarIdleCloseMinutesTitle",
-    "description": "settingCalendarIdleCloseMinutesDescription",
+    "description": "settingIdleCloseCompassDescription",
   },
   "kiosk.allow_music_library": {
     "title": "libraryTitle",
@@ -2611,5 +2739,117 @@ const settingMessageIds = <String, Map<String, String>>{
   "intercom.video_quality": {
     "title": "settingIntercomVideoQualityTitle",
     "description": "settingIntercomVideoQualityDescription",
+  },
+  "nav.style": {
+    "title": "settingNavStyleTitle",
+    "description": "settingNavStyleDescription",
+  },
+  "nav.compass_layout": {
+    "title": "settingNavCompassLayoutTitle",
+    "description": "settingNavCompassLayoutViewsDescription",
+  },
+  "nav.compass_animation": {
+    "title": "settingNavCompassAnimationTitle",
+    "description": "settingNavCompassAnimationDescription",
+  },
+  "nav.compass_position": {
+    "title": "settingNavCompassPositionTitle",
+    "description": "settingNavCompassPositionDescription",
+  },
+  "nav.compass_return_minutes": {
+    "title": "settingNavCompassReturnMinutesTitle",
+    "description": "settingNavCompassReturnMinutesDescription",
+  },
+  "nav.compass_menu_items": {
+    "title": "settingNavCompassMenuItemsTitle",
+    "description": "settingNavQuickControlsItemsDescription",
+  },
+  "web.geolocation": {
+    "title": "settingWebGeolocationTitle",
+    "description": "settingWebGeolocationDescription",
+  },
+  "timers.tts_engine": {
+    "title": "settingAlarmsTtsEngineTitle",
+    "description": "settingTimersTtsEngineDescription",
+  },
+  "timers.tts_language": {
+    "title": "settingAlarmsTtsLanguageTitle",
+    "description": "settingTimersTtsLanguageDescription",
+  },
+  "timers.tts_voice": {
+    "title": "settingAlarmsTtsVoiceTitle",
+    "description": "settingTimersTtsVoiceDescription",
+  },
+  "timers.show_before_end": {
+    "title": "settingTimersShowBeforeEndTitle",
+    "description": "settingTimersShowBeforeEndDescription",
+  },
+  "timers.menu": {
+    "title": "settingShowInKioskMenuTitle",
+    "description": "settingUiDrawerItemsDescription",
+  },
+  "timers.enabled": {
+    "title": "settingTimersEnabledTitle",
+    "description": "settingTimersEnabledDescription",
+  },
+  "timers.show_on_start": {
+    "title": "settingTimersShowOnStartTitle",
+    "description": "settingTimersShowOnStartDescription",
+  },
+  "timers.pause_screensaver": {
+    "title": "settingTimersPauseScreensaverTitle",
+    "description": "settingTimersPauseScreensaverDescription",
+  },
+  "timers.view_scale": {
+    "title": "settingTimersViewScaleTitle",
+    "description": "settingTimersViewScaleDescription",
+  },
+  "voice_match.enabled": {
+    "title": "settingVoiceMatchEnabledTitle",
+    "description": "settingVoiceMatchEnabledDescriptionCommand",
+  },
+  "voice_match.policy": {
+    "title": "settingVoiceMatchPolicyTitle",
+    "description": "settingVoiceMatchPolicyDescriptionChosen",
+  },
+  "voice_match.people": {
+    "title": "settingVoiceMatchPeopleTitle",
+    "description": "settingVoiceMatchPeopleDescription",
+  },
+  "voice_match.rejected": {
+    "title": "settingVoiceMatchRejectedTitleChosen",
+    "description": "settingVoiceMatchRejectedDescription",
+  },
+  "voice_match.end_on_other_voice": {
+    "title": "settingVoiceMatchTrimmingTitle",
+    "description": "settingVoiceMatchTrimmingDescription",
+  },
+  "voice_match.isolation": {
+    "title": "settingVoiceMatchIsolationTitle",
+    "description": "settingVoiceMatchIsolationDescription",
+  },
+  "voice_match.speaker_sensor": {
+    "title": "settingVoiceMatchSpeakerSensorTitle",
+    "description": "settingVoiceMatchSpeakerSensorDescription",
+  },
+  "voice_match.show_speaker": {
+    "title": "settingVoiceMatchShowSpeakerTitle",
+    "description": "settingVoiceMatchShowSpeakerDescription",
+  },
+  "voice_match.allow_enroll": {
+    "title": "settingVoiceMatchAllowEnrollTitle",
+    "description": "settingVoiceMatchAllowEnrollDescriptionGroundControl",
+  },
+  "ground_control.enabled": {
+    "title": "settingGroundControlEnabledTitle",
+    "description": "settingGroundControlEnabledDescription",
+  },
+  "ground_control.address": {
+    "title": "settingGroundControlAddressTitle",
+    "description": "settingGroundControlAddressDescription",
+  },
+  "ground_control.voice_match": {
+    "title": "settingGroundControlVoiceMatchTitle",
+    "description": "settingGroundControlVoiceMatchFeaturesDescription",
   },
 };

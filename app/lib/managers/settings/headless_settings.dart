@@ -28,6 +28,8 @@ class HeadlessSettings {
 
   /// Whole pages with nothing that works without a screen.
   static const _hiddenCategories = {
+    // No screen to swipe across or menu to open.
+    'Navigation',
     'Browser',
     'Web Content',
     'Screensaver',
@@ -56,8 +58,11 @@ class HeadlessSettings {
     // Voice: listening never leaves the foreground, there is none.
     defs.wakeWordBackground.key,
     defs.wakeWordReturnToBackground.key,
-    defs.voiceTimerAlertPill.key,
-    defs.voiceTimerNameOnAlert.key,
+    // Timers: no Timers view to open or screensaver to hold.
+    defs.timersShowOnStart.key,
+    defs.timersShowBeforeEnd.key,
+    defs.timersPauseScreensaver.key,
+    defs.timersViewScale.key,
     // Intercom: no talk button, and the buttons are gestures.
     defs.intercomTalkMode.key,
     defs.intercomHangupKey.key,
@@ -65,8 +70,9 @@ class HeadlessSettings {
     defs.intercomVideo.key,
     defs.intercomAutoAnswerCamera.key,
     defs.intercomVideoQuality.key,
-    // Alarms: no panel to light.
+    // Alarms: no panel to light, and no screensaver to skip from.
     defs.alarmsSunriseMinutes.key,
+    defs.alarmsSkipMinutes.key,
     // Gestures: the hand hold needs the camera.
     defs.handGestureHoldSeconds.key,
     // DLNA: everything is background audio here.
@@ -104,8 +110,9 @@ class HeadlessSettings {
       case 'ESPHome':
         return def.subpage == 'Notifications' && def.section == 'Appearance';
       case 'Voice Satellite':
-        return const {'Appearance', 'Conversation'}.contains(def.subpage) ||
-            def.section == 'Pills';
+        return const {'Appearance', 'Conversation'}.contains(def.subpage);
+      case 'Timers':
+        return def.section == 'Pills';
     }
     return false;
   }
@@ -124,6 +131,8 @@ class HeadlessSettings {
     defs.wakeWordBackground: true,
     defs.wakeWordReturnToBackground: false,
     defs.dlnaAudioBackground: true,
+    // The pills would blank the timer names Home Assistant gets.
+    defs.voiceTimerPills: false,
     defs.intercomTalkMode: 'handsfree',
     // The dashboard runtime runs inside the WebView.
     defs.voiceRuntime: 'native',
@@ -133,9 +142,10 @@ class HeadlessSettings {
   Future<void> init() async {
     for (final def in defs.allSettings) {
       // A link to Drawer menu items goes with the menu, which is not here.
+      // Other links stay, like Voice Match under Ground Control's Features.
       if (_hiddenCategories.contains(def.category) ||
           _hiddenKeys.contains(def.key) ||
-          def.linksTo != null ||
+          def.linksTo == defs.uiDrawerItems.key ||
           _hiddenPart(def)) {
         defs.deviceHiddenKeys.add(def.key);
       }

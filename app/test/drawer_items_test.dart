@@ -144,11 +144,19 @@ void main() {
       await container.settings.init();
       addTearDown(container.settings.dispose);
       final links = defs.allSettings.where((d) => d.linksTo != null).toList();
-      expect({for (final d in links) d.key}, drawerItemLinks.keys.toSet());
+      // The old per-row switches, plus Compass's Menu items row, which
+      // only leads to the same list. Other links, such as Ground Control's
+      // Voice Match row, open a page of their own.
+      final drawerLinks = links
+          .where((d) => d.linksTo == defs.uiDrawerItems.key)
+          .toList();
+      expect({
+        for (final d in drawerLinks)
+          if (d.key != defs.navCompassMenuItems.key) d.key,
+      }, drawerItemLinks.keys.toSet());
       final export = container.settings.export();
       for (final d in links) {
         expect(export.containsKey(d.key), isFalse, reason: d.key);
-        expect(d.linksTo, defs.uiDrawerItems.key);
       }
       final described = container.settings.describe().firstWhere(
         (d) => d['key'] == 'alarms.menu',
