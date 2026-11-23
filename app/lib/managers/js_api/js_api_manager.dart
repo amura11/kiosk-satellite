@@ -158,8 +158,13 @@ class JsApiManager extends Manager {
     _haSockets?.run = _runInPage;
     controller.addJavaScriptHandler(
       handlerName: 'ksApi',
-      callback: (args) => identical(_controller?.platform, controller.platform)
-          ? _onCall(args)
+      callback: (JavaScriptHandlerFunctionData data) =>
+          identical(_controller?.platform, controller.platform) &&
+              // A frame inside the dashboard (an iframe card) may not answer
+              // for a popup of the page.
+              (data.isMainFrame ||
+                  !_mainFrameOnly.contains(_methodOf(data.args)))
+          ? _onCall(data.args)
           : null,
     );
     // The managed Home Assistant connection, on a handler of its own: its
@@ -174,6 +179,12 @@ class JsApiManager extends Manager {
           : null,
     );
   }
+
+  /// The ksApi calls only the top document may make.
+  static const _mainFrameOnly = {'popupResult'};
+
+  static Object? _methodOf(List<dynamic> args) =>
+      args.isEmpty ? null : args.first;
 
   void _runInPage(String js) {
     final controller = _controller;
@@ -240,6 +251,7 @@ class JsApiManager extends Manager {
     // arrived: it opens it again.
     _haSockets?.closeAll('navigation', notify: true);
     bus.publish(const VoiceTimersCleared());
+    bus.publish(const DashboardNavigationStarted());
     _browserMicrophones.clear();
     unawaited(MicHub.instance.setBrowserCapturing(false));
     if (_pageInteractions.isEmpty) return;
@@ -289,6 +301,34 @@ class JsApiManager extends Manager {
 
     if (method == 'remoteSettingsChanged') {
       bus.publish(const RemoteStatusChanged('voice'));
+      return true;
+    }
+
+    // How a dashboard popup ended. Any page can call this, so the manager
+    // that opened the popup checks the id; the values are bounded here.
+    if (method == 'popupResult') {
+      final id = params['id'];
+      final outcome = params['outcome'];
+      if (id is! String || id.length > 64 || outcome is! String) return false;
+      final values = params['values'];
+      // A form is a handful of short fields; anything bigger is not one.
+      if (values is Map &&
+          (values.length > 50 || jsonEncode(values).length > 8192)) {
+        return false;
+      }
+      bus.publish(
+        PopupReported(
+          id: id,
+          outcome: outcome.length > 32 ? '' : outcome,
+          values: values is Map ? values.cast<String, Object?>() : const {},
+          error: params['error'] is String
+              ? (params['error'] as String).substring(
+                  0,
+                  (params['error'] as String).length.clamp(0, 200),
+                )
+              : '',
+        ),
+      );
       return true;
     }
 

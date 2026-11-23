@@ -1740,6 +1740,58 @@ class EspEntitySurface {
     },
     // Drops that page, whoever put it up; nothing up is not an error.
     {'name': 'close_url', 'supportsResponse': true, 'args': []},
+    // A dialog in the dashboard page, with an optional Home Assistant form
+    // (a keypad, say). Answers with the popup's id; how it ended comes
+    // back as the esphome.kiosk_satellite_popup event.
+    {
+      'name': 'popup',
+      'supportsResponse': true,
+      'args': [
+        {'name': 'title', 'type': 'string'},
+        {'name': 'message', 'type': 'string'},
+        // The form: a JSON list of {name, selector, label, default}.
+        {'name': 'content', 'type': 'string'},
+        {'name': 'left_button', 'type': 'string'},
+        {'name': 'right_button', 'type': 'string'},
+        // Seconds until it closes by itself; 0 stays until answered.
+        {'name': 'timeout', 'type': 'int'},
+        {'name': 'dismissable', 'type': 'bool'},
+        {'name': 'hold_mode', 'type': 'bool'},
+      ],
+    },
+    // The same dialog with a Home Assistant action behind each button: a
+    // JSON {"action": "domain.service", "target": {...}, "data": {...}},
+    // empty for none. {value} in data is what the form holds.
+    {
+      'name': 'popup_custom',
+      'supportsResponse': true,
+      'args': [
+        {'name': 'title', 'type': 'string'},
+        {'name': 'message', 'type': 'string'},
+        {'name': 'content', 'type': 'string'},
+        {'name': 'left_button', 'type': 'string'},
+        {'name': 'left_button_action', 'type': 'string'},
+        {'name': 'right_button', 'type': 'string'},
+        {'name': 'right_button_action', 'type': 'string'},
+        {'name': 'timeout', 'type': 'int'},
+        {'name': 'dismissable', 'type': 'bool'},
+        {'name': 'hold_mode', 'type': 'bool'},
+      ],
+    },
+    // A message with one button and no form, the shortest way to a dialog.
+    {
+      'name': 'popup_message',
+      'supportsResponse': true,
+      'args': [
+        {'name': 'title', 'type': 'string'},
+        {'name': 'message', 'type': 'string'},
+        // Its text; empty leaves the close button as the only way out.
+        {'name': 'button', 'type': 'string'},
+        {'name': 'timeout', 'type': 'int'},
+      ],
+    },
+    // Closes that dialog; nothing up is not an error.
+    {'name': 'popup_close', 'supportsResponse': true, 'args': []},
     // A shell command line through Shizuku, as adb shell would run it.
     // Answers with exit_code, stdout and stderr; a command that ran and
     // failed is still a success, and only one that could not run (no
@@ -1986,6 +2038,34 @@ class EspEntitySurface {
         return const {};
       case 'close_url':
         final result = await commands.execute('hideOverlayPage', const {});
+        if (!result.ok) throw StateError(result.error ?? 'refused');
+        return const {};
+      case 'popup':
+      case 'popup_custom':
+      case 'popup_message':
+        final message = name == 'popup_message';
+        final result = await commands.execute('showPopup', {
+          'title': '${args['title'] ?? ''}',
+          'message': '${args['message'] ?? ''}',
+          if (!message) 'content': '${args['content'] ?? ''}',
+          // Empty is how the action says "no such button".
+          if (!message) 'left_button': '${args['left_button'] ?? ''}',
+          'right_button': '${args[message ? 'button' : 'right_button'] ?? ''}',
+          // Only popup_custom has them; the plain popup never runs one.
+          if (name == 'popup_custom') ...{
+            'left_button_action': '${args['left_button_action'] ?? ''}',
+            'right_button_action': '${args['right_button_action'] ?? ''}',
+          },
+          'timeout': args['timeout'] ?? 0,
+          // The action cannot leave a bool out; the dialog is closable
+          // unless the call says it is not.
+          'dismissable': args['dismissable'] ?? true,
+          'hold': args['hold_mode'] == true,
+        });
+        if (!result.ok) throw StateError(result.error ?? 'refused');
+        return (result.data as Map?)?.cast<String, Object?>() ?? const {};
+      case 'popup_close':
+        final result = await commands.execute('closePopup', const {});
         if (!result.ok) throw StateError(result.error ?? 'refused');
         return const {};
       case 'shizuku_command':

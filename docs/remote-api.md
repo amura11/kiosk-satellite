@@ -186,6 +186,9 @@ button over the dashboard, the surface a tapped dashboard link gets;
 `hold: true` turns hold mode on with the page and off when it goes; the
 `open_url` and `close_url` [ESPHome actions](esphome.md#open-a-web-page)
 call the same two),
+`showPopup {title, message, content, left_button, left_button_action, right_button, right_button_action, timeout, dismissable, hold}` / `closePopup` (a dialog in the dashboard page,
+answering with its `id`; the [`popup`, `popup_custom`, `popup_message` and `popup_close` ESPHome actions](esphome.md#show-a-popup)
+call these),
 `bringToFront` (come back in front of it), `installedApps` (every
 launchable app as `[{package, label}]`), `immichAlbums`,
 `immichPeople` and `immichTags` (the Immich screensaver's albums, named
