@@ -20,6 +20,7 @@ import '../settings/settings_manager.dart';
 import 'custom_pages.dart';
 import 'dashboard_list.dart';
 import 'entity_list.dart';
+import 'ha_popups.dart';
 import 'plugin_entities.dart';
 import 'package:kiosk_satellite/core/lifecycle.dart';
 
@@ -43,6 +44,15 @@ class HomeAssistantManager extends Manager {
           ? const RemoteStatusChanged('voice')
           : PluginHaStateChanged(owner, id, state),
     ),
+  );
+
+  /// Dialogs shown in the dashboard page (the `popup` action).
+  late final _popups = HaPopups(
+    bus: bus,
+    commands: commands,
+    log: log,
+    settings: _settings,
+    evalJs: _evalJs,
   );
 
   /// One "minute" of the hold auto-release clock; injectable so tests can
@@ -198,6 +208,7 @@ class HomeAssistantManager extends Manager {
         _stateLabels.clear();
       }
     });
+    _popups.register();
     commands
       ..register(
         Command(
@@ -563,6 +574,9 @@ class HomeAssistantManager extends Manager {
             'domain': 'service domain, e.g. light',
             'service': 'service name, e.g. turn_on',
             'entity_id': 'optional target entity',
+            'target':
+                'optional target object (entity_id, device_id, area_id); '
+                'used instead of entity_id',
             'data': 'optional service data (JSON object)',
           },
           handler: (p) async {
@@ -576,13 +590,17 @@ class HomeAssistantManager extends Manager {
             }
             final entity = '${p['entity_id'] ?? ''}'.trim();
             final data = p['data'];
+            final target = p['target'];
             try {
               await _wsCommand({
                 'type': 'call_service',
                 'domain': domain,
                 'service': service,
                 if (data is Map) 'service_data': data,
-                if (entity.isNotEmpty) 'target': {'entity_id': entity},
+                if (target is Map && target.isNotEmpty)
+                  'target': target
+                else if (entity.isNotEmpty)
+                  'target': {'entity_id': entity},
               });
               log.info(name, 'called $domain.$service');
               return const CommandResult.ok();
@@ -3528,6 +3546,7 @@ class HomeAssistantManager extends Manager {
   Future<void> dispose() async {
     await _remoteObservers?.cancel();
     _pluginEntities.dispose();
+    _popups.dispose();
     _themeTimer?.cancel();
     _revalidateTimer?.cancel();
     _rotationTimer?.cancel();

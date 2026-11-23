@@ -467,6 +467,86 @@ The page has the same footing as any other link the kiosk opens: it follows the 
 
 On the [remote API](remote-api.md) the same two are the `showLinkPage` and `hideOverlayPage` commands, `showLinkPage` with the same `hold` flag.
 
+## Show a popup
+
+`esphome.<node name>_popup` opens a dialog in the dashboard itself, the way Browser Mod's `browser_mod.popup` does, and tells Home Assistant how it ended. It is listed with **Expose kiosk entities**. Before the dialog shows, the kiosk wakes the screen, stops a running screensaver and closes a web page open over the dashboard, so it is seen rather than loaded behind a black screen. The dashboard has to be the page the kiosk is showing: the dialog is drawn by script in that page, and fails with an error when there is none.
+
+The form is drawn by Home Assistant's own `ha-form`, so every selector it knows works, and so does one a custom integration adds, such as the [keypad selector](https://github.com/amura11/ha-selector-keypad). When it ends, the kiosk fires an [event](events.md#popups) with what was entered, and your automation decides what that means, or `popup_custom` calls a service for you.
+
+| Parameter | What it does |
+| --- | --- |
+| `title` | The heading. |
+| `message` | Plain text under the heading. |
+| `content` | The form, as a JSON list of fields, each `{"name": ..., "selector": ..., "label": ..., "default": ...}`. Empty for a dialog with text only. |
+| `left_button`, `right_button` | The text of the cancel and the confirm button. Empty leaves that button out. Confirm sends what the form holds. |
+| `timeout` | Seconds until the dialog closes itself, with a bar across its top counting down. `0` stays until answered. |
+| `dismissable` | `true` (the default) lets the close button, a tap outside the dialog and the Escape key close it. |
+| `hold_mode` | `true` turns [hold mode](screensavers.md#starting-and-dismissing) on while the dialog is up and off again after, however it ends. A hold you already had on is left alone. The hold's own auto release timer still applies. |
+
+Two shorter actions cover the common cases. `esphome.<node name>_popup_message` takes `title`, `message`, `button` and `timeout`, and shows a message with one button and no form. `esphome.<node name>_popup_custom` is `popup` with an action behind each button, described [below](#buttons-that-call-a-service). The plain `popup` never runs one.
+
+The action answers with the dialog's `id`. A second popup replaces the first, which ends as `replaced`. `esphome.<node name>_popup_close` takes no arguments and closes the dialog, and never fails when there is none.
+
+```yaml
+# Ask for the alarm code on the wall panel and disarm with it.
+- action: esphome.wall_panel_popup
+  data:
+    title: Enter Code
+    content: '[{"name": "code", "selector": {"keypad": {"show_label": false, "mask": "*"}}}]'
+    left_button: Cancel
+    right_button: Disarm
+    timeout: 30
+    dismissable: true
+    hold_mode: true
+  response_variable: popup
+- wait_for_trigger:
+    - trigger: event
+      event_type: esphome.kiosk_satellite_popup
+      event_data:
+        popup_id: "{{ popup.id }}"
+  timeout: "00:00:35"
+  continue_on_timeout: false
+- if:
+    - condition: template
+      value_template: "{{ wait.trigger.event.data.event_type == 'confirmed' }}"
+  then:
+    - action: alarm_control_panel.alarm_disarm
+      target:
+        entity_id: alarm_control_panel.home
+      data:
+        code: "{{ wait.trigger.event.data.value }}"
+```
+
+The `popup_id` in `event_data` keeps the trigger on this dialog, so another kiosk's popup or a later one never answers it. On the [remote API](remote-api.md) the same are the `showPopup` and `closePopup` commands, where `content` and the button actions can be a list or a mapping instead of a JSON string, `hold` is the name of `hold_mode`, and every parameter but the text is optional.
+
+### Buttons that call a service
+
+`popup_custom` takes the `popup` parameters and two more, `left_button_action` and `right_button_action`. Each is a JSON object in Home Assistant's own shape, `{"action": "domain.service", "target": {...}, "data": {...}}`, or empty for none. `target` and `data` are optional inside it. The left button runs its action when pressed, and the right one when pressed too, with what the form holds. A timeout, a tap outside the dialog or a close never runs one. A button needs its text to have an action.
+
+In `data` and `target`, `{value}` is the form's field when it has exactly one, and `{name}` is a field by its name. A string that is only a placeholder keeps the value's own type, such as a number from a slider. As with every ESPHome action, all parameters are required, so pass `""` for what you leave out.
+
+```yaml
+- action: esphome.wall_panel_popup_custom
+  data:
+    title: Enter Code
+    message: ""
+    content: '[{"name": "code", "selector": {"keypad": {"show_label": false, "mask": "*"}}}]'
+    left_button: Cancel
+    left_button_action: ""
+    right_button: Disarm
+    right_button_action: >-
+      {"action": "alarm_control_panel.alarm_disarm",
+       "target": {"entity_id": "alarm_control_panel.home"},
+       "data": {"code": "{value}"}}
+    timeout: 30
+    dismissable: true
+    hold_mode: true
+```
+
+The kiosk makes the call itself, over its Home Assistant connection, so it needs the Home Assistant URL and token under **Settings > Home Assistant**. The [event](events.md#popups) still fires as well, with `action_error` when the call failed.
+
+The code travels from the kiosk to Home Assistant over the ESPHome connection and sits in the event for as long as Home Assistant keeps it, and a service call made by a button carries it too. It is not sent as an [Android broadcast](android-broadcasts.md), where other apps could read it.
+
 ## Run a Shizuku command
 
 `esphome.<node name>_shizuku_command` runs a shell command on the kiosk through [Shizuku](shizuku.md), the same way `adb shell` would. It is listed with **Expose kiosk entities** and needs Shizuku running with Kiosk Satellite allowed under **Settings > Device > Shizuku**. The command runs as the user Shizuku runs as, which is Android's shell user when Shizuku was started over ADB and root when it was started as root.

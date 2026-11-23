@@ -1,6 +1,6 @@
 # Home Assistant Events
 
-Kiosk Satellite fires an event on the Home Assistant bus whenever a voice turn, a timer, the person talking, an intercom call, an alarm, a notification card, the screensaver or the screen changes. Automations can trigger on them with an event trigger. They go out over the ESPHome connection, so turn on **Settings > ESPHome** and add the kiosk to Home Assistant first. **Expose kiosk entities** is not needed.
+Kiosk Satellite fires an event on the Home Assistant bus whenever a voice turn, a timer, the person talking, an intercom call, an alarm, a notification card, a popup, the screensaver or the screen changes. Automations can trigger on them with an event trigger. They go out over the ESPHome connection, so turn on **Settings > ESPHome** and add the kiosk to Home Assistant first. **Expose kiosk entities** is not needed.
 
 Home Assistant only fires device events under `esphome.`, hence the prefix. Every event carries `event_type` with what happened. Home Assistant adds `device_id`, the kiosk's ESPHome device. Use `device_id` to react to one kiosk only. You can find it in the URL of the kiosk's device page.
 
@@ -12,6 +12,7 @@ Home Assistant only fires device events under `esphome.`, hence the prefix. Ever
 | [`esphome.kiosk_satellite_intercom`](#intercom) | Intercom calls and announcements |
 | [`esphome.kiosk_satellite_alarm`](#alarms) | Alarms |
 | [`esphome.kiosk_satellite_notification`](#notifications) | Notification cards leaving the screen |
+| [`esphome.kiosk_satellite_popup`](#popups) | A [popup](esphome.md#show-a-popup) ending |
 | [`esphome.kiosk_satellite_screensaver`](#screensaver) | The screensaver |
 | [`esphome.kiosk_satellite_screen`](#screen) | The screen turning on and off |
 
@@ -177,6 +178,34 @@ actions:
       volume: 0
       image: ""
 ```
+
+## Popups
+
+`esphome.kiosk_satellite_popup` fires when a dialog from the [`popup` action](esphome.md#show-a-popup) ends.
+
+```yaml
+event_type: esphome.kiosk_satellite_popup
+data:
+  device_id: 5f1c...
+  event_type: confirmed
+  popup_id: p3
+  title: Enter Code
+  message: ""
+  values: '{"code": "1234"}'
+  value: "1234"
+```
+
+| `event_type` | When |
+| --- | --- |
+| `confirmed` | Someone pressed the right button. |
+| `cancelled` | Someone pressed the left button. |
+| `dismissed` | The close button, a tap outside the dialog or the Escape key closed it. |
+| `timeout` | The `timeout` ran out. |
+| `replaced` | Another popup took its place. |
+| `closed` | `popup_close` or the remote API closed it, or the dashboard reloaded under it. |
+| `error` | The form could not be drawn, such as a selector the dashboard does not have. `error` says why. |
+
+`action_error` is there when a button's [service call](esphome.md#buttons-that-call-a-service) failed. `popup_id` is the `id` the action answered with. `title` and `message` are the dialog's own. Only `confirmed` carries what was entered: `values` is every field as a JSON string, and `value` is the field's value when the form has exactly one, such as a code.
 
 ## Screensaver
 

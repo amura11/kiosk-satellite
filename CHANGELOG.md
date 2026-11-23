@@ -4,6 +4,9 @@ All notable changes to Kiosk Satellite are documented here. Full release notes f
 
 ## Unreleased
 
+### Added
+- **Show a popup in the dashboard from Home Assistant.** A new `popup` ESPHome action opens a dialog with a title, text, an optional form and two buttons over the dashboard, the way Browser Mod's `browser_mod.popup` does. The form is drawn by Home Assistant's own `ha-form`, so a custom selector such as a keypad works. `timeout` closes it by itself, `hold_mode` keeps the kiosk on the page meanwhile, and `popup_close` closes it. When it ends the kiosk fires `esphome.kiosk_satellite_popup` with how it ended and, for the confirm button, what was entered. `popup_message` is the short form, a message with one button, and `popup_custom` runs a Home Assistant service call from each button, with the form's value in it as `{value}`. On the remote API: `showPopup` and `closePopup`.
+
 ### Changed
 - **A Ground Control section in the README.** The README now describes Ground Control and Voice Match before Get started, with the Isolation demo video.
 

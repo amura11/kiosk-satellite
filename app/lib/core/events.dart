@@ -1397,6 +1397,29 @@ class VoiceTimersCleared extends AppEvent {
   const VoiceTimersCleared();
 }
 
+/// A dashboard popup (see HaPopups) reported how it ended, from the
+/// page: [outcome] is `confirmed`, `cancelled`, `dismissed`, `timeout` or
+/// `error`, [values] what the form held. [id] is the popup it answers; the
+/// manager ignores any it did not open.
+class PopupReported extends AppEvent {
+  const PopupReported({
+    required this.id,
+    required this.outcome,
+    required this.values,
+    this.error = '',
+  });
+  final String id;
+  final String outcome;
+  final Map<String, Object?> values;
+  final String error;
+}
+
+/// A full navigation started in the dashboard WebView: whatever the old
+/// document was showing is gone.
+class DashboardNavigationStarted extends AppEvent {
+  const DashboardNavigationStarted();
+}
+
 /// An event for Home Assistant to fire on its bus, sent over the ESPHome
 /// API while that server runs. [name] goes out under `esphome.`, the only
 /// namespace Home Assistant fires device events in. Strings stay strings;
